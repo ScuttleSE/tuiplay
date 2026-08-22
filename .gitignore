@@ -1,0 +1,18 @@
+# Build output
+/tuiplay
+/tuiplay-crossfade
+/dist/
+
+# Screenshots and other local images
+*.png
+
+# Real config files (never commit credentials)
+config.toml
+*.local.toml
+
+# GitHub mirror release token (never commit)
+github-release.env
+
+# Editor and OS files
+*.swp
+.DS_Store

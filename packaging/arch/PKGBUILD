@@ -1,0 +1,54 @@
+# Maintainer: scuttle <scuttle@hemmalab.se>
+# This PKGBUILD builds tuiplay from a tagged source release. The release
+# workflow injects pkgver from the git tag and builds the package with
+# makepkg in an Arch container. You can also build it by hand: set pkgver
+# to a released version, then run `makepkg -si` in this directory.
+#
+# A manual (workflow_dispatch) run rewrites the source= line to a local
+# tarball of the current checkout, so it packages the rolling version
+# without a published tag.
+
+pkgname=tuiplay
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="Terminal music player that streams from a Navidrome server (Subsonic API), ncmpcpp-style"
+arch=('x86_64')
+url="https://git.hemmalab.se/scuttle/tuiplay"
+# The repository declares no license file, so the package license is unknown.
+# Note: the binary statically links github.com/tphakala/go-aac, which is
+# LGPL-2.1-or-later (a derivative of FFmpeg's AAC decoder). Its source is
+# public at https://github.com/tphakala/go-aac and pinned in go.mod/go.sum.
+license=('custom:unknown')
+depends=('alsa-lib')
+makedepends=('go' 'pkgconf' 'git')
+# The Go build strips the binary itself (-s -w), so there are no debug
+# symbols to split. Disable makepkg's debug/strip handling so it produces a
+# single tuiplay package (not a tuiplay-debug split).
+options=('!debug' '!strip' '!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname"
+
+  export CGO_ENABLED=1
+  export GOFLAGS="-trimpath -mod=readonly -modcacherw"
+  export GOOS=linux
+  export GOARCH=amd64
+  # Honor the Arch hardening flags for the cgo (ALSA) parts.
+  export CGO_CPPFLAGS="${CPPFLAGS}"
+  export CGO_CFLAGS="${CFLAGS}"
+  export CGO_CXXFLAGS="${CXXFLAGS}"
+  export CGO_LDFLAGS="${LDFLAGS}"
+
+  go build -ldflags="-s -w" -o "$pkgname" ./cmd/tuiplay
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+
+  install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 config.example.toml \
+    "$pkgdir/usr/share/doc/$pkgname/config.example.toml"
+}

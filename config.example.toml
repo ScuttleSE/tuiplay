@@ -1,0 +1,66 @@
+# Example configuration for tuiplay.
+# Copy this file to ~/.config/tuiplay/config.toml and edit the values.
+# Do not commit your real config file. It holds your password.
+
+# The base URL of your Navidrome server.
+server_url = "https://navidrome.example.com"
+
+# Your Navidrome account.
+username = "yourname"
+password = "yourpassword"
+
+# Optional: limit the stream bit rate in kilobits per second.
+# A value of 0 (the default) means no limit.
+max_bit_rate = 0
+
+# Optional: the seek step in seconds for the seek keys. Default is 10.
+seek_seconds = 10
+
+# Optional: the crossfade length in seconds. Default is 4.
+crossfade_seconds = 4
+
+# Interface state. tuiplay updates this section on exit.
+[ui]
+# The last right-pane state: "nav" (navigation panel shown) or "hidden".
+active_view = "nav"
+# The fraction of the width for the left queue pane, from 0 to 1.
+split_ratio = 0.6
+
+# Key bindings. Uncomment a line to change a key. An unset action uses its
+# default. Two actions must not share a key. Keys are case sensitive.
+# [keys]
+# quit = "q"
+# hide_right = "1"
+# show_nav = "2"
+# focus_toggle = "tab"
+# up = "k"
+# down = "j"
+# page_up = "pgup"
+# page_down = "pgdown"
+# home = "home"
+# end = "end"
+# select = "enter"
+# add = "a"
+# add_all = "space"
+# consume = "R"
+# repeat = "r"
+# shuffle = "z"
+# crossfade = "x"
+# crossfade_set = "X"
+# save_playlist = "S"
+# save_overwrite = "ctrl+s"
+# delete = "delete"
+# clear = "c"
+# song_info = "i"
+# artist_info = "I"
+# help = "f1"
+# pause = "p"
+# stop = "s"
+# next = ">"
+# prev = "<"
+# seek_forward = "f"
+# seek_back = "b"
+# volume_up = "+"
+# volume_down = "-"
+
+
