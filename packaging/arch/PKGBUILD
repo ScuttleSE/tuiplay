@@ -14,11 +14,11 @@ pkgrel=1
 pkgdesc="Terminal music player that streams from a Navidrome server (Subsonic API), ncmpcpp-style"
 arch=('x86_64')
 url="https://git.hemmalab.se/scuttle/tuiplay"
-# The repository declares no license file, so the package license is unknown.
-# Note: the binary statically links github.com/tphakala/go-aac, which is
-# LGPL-2.1-or-later (a derivative of FFmpeg's AAC decoder). Its source is
-# public at https://github.com/tphakala/go-aac and pinned in go.mod/go.sum.
-license=('custom:unknown')
+# tuiplay's own code is public domain (The Unlicense). The binary statically
+# links github.com/tphakala/go-aac, which is LGPL-2.1-or-later (a derivative of
+# FFmpeg's AAC decoder). Its source is public at
+# https://github.com/tphakala/go-aac and pinned in go.mod/go.sum.
+license=('Unlicense' 'LGPL2.1')
 depends=('alsa-lib')
 makedepends=('go' 'pkgconf' 'git')
 # The Go build strips the binary itself (-s -w), so there are no debug

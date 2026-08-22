@@ -5,6 +5,21 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-22
+
+### Added
+- A `LICENSE` file. tuiplay's own code is released into the public domain under
+  The Unlicense. The author claims no ownership and gives no warranty. The Arch
+  package now declares `Unlicense` plus `LGPL2.1` for the statically linked
+  go-aac decoder.
+
+### Changed
+- The README now carries a clear notice that the project is built with AI and
+  comes with no guarantees, and points at the public-domain license.
+- The README installation section no longer references prebuilt binaries or a
+  releases page. It documents building from source only, and its clone URL now
+  points at the public GitHub repository.
+
 ## [0.6.0] - 2026-08-22
 
 ### Added

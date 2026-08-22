@@ -1,5 +1,10 @@
 # tuiplay
 
+> **Built with AI.** This project was written largely by an AI agent. It comes
+> with **no guarantees** of any kind: no promise that it works, is correct, is
+> secure, or is maintained. Use it at your own risk. The code is released into
+> the public domain (see [LICENSE](LICENSE)); the author claims no ownership.
+
 A terminal music player that streams from a [Navidrome](https://www.navidrome.org/) server. The look and feel take inspiration from [ncmpcpp](https://github.com/ncmpcpp/ncmpcpp).
 
 `tuiplay` talks to Navidrome through the Subsonic / OpenSubsonic API. It browses your library by artist and album, builds a play queue, and plays audio directly through your system's sound device.
@@ -33,10 +38,10 @@ To **build** the player from source you additionally need:
 
 ## Installation
 
-Download a binary from the [releases page](https://git.hemmalab.se/scuttle/tuiplay/releases), or build it yourself:
+Build it from source:
 
 ```sh
-git clone https://git.hemmalab.se/scuttle/tuiplay.git
+git clone https://github.com/ScuttleSE/tuiplay.git
 cd tuiplay
 go build -o tuiplay ./cmd/tuiplay
 ```
@@ -345,4 +350,9 @@ The version format is `<major>.<minor>.<build>`. It starts at `0.0.0`. Each comm
 
 ## License
 
-See the repository for license details.
+This project is released into the public domain under [The Unlicense](LICENSE).
+The author claims no ownership and provides no warranty of any kind.
+
+Note: tuiplay depends on third-party libraries that keep their own licenses
+(for example, `go-aac` is LGPL-2.1-or-later). The Unlicense applies to this
+project's own code, not to its dependencies.
