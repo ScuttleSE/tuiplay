@@ -59,6 +59,7 @@ func (m model) overlayHelp(screen string) string {
 		"f/b seek         +/- volume",
 		"R consume        r repeat",
 		"z random         x/X crossfade",
+		"V/v radio (feeder queue)",
 		"i song info      I artist info",
 		"e edit smart pl  S save playlist",
 		"Ctrl+s overwrite playlist",
@@ -541,7 +542,8 @@ func (m model) renderStatus() string {
 		right = fmt.Sprintf("[%s/%s]", fmtDur(m.elapsed), fmtDur(m.total))
 	}
 	// Mode flags use single letters: R repeat, c consume, r random, x
-	// crossfade, t transcoding. They join without spaces, like [cr] or [Rxt].
+	// crossfade, F radio (feeder), t transcoding. They join without spaces,
+	// like [cr] or [Rxt].
 	flags := ""
 	if m.repeat {
 		flags += "R"
@@ -554,6 +556,9 @@ func (m model) renderStatus() string {
 	}
 	if m.crossfade {
 		flags += "x"
+	}
+	if m.radio {
+		flags += "F"
 	}
 	if m.transcoding {
 		flags += "t"

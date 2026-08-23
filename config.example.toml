@@ -19,6 +19,12 @@ seek_seconds = 10
 # Optional: the crossfade length in seconds. Default is 4.
 crossfade_seconds = 4
 
+# Optional: the target queue size for radio (feeder) mode. Default is 10.
+# In radio mode the queue draws random songs from a playlist or a search
+# result and consumes played songs, so the queue never empties and never
+# grows past this size on its own.
+radio_queue_size = 10
+
 # Interface state. tuiplay updates this section on exit.
 [ui]
 # The last right-pane state: "nav" (navigation panel shown) or "hidden".
@@ -62,5 +68,7 @@ split_ratio = 0.6
 # seek_back = "b"
 # volume_up = "+"
 # volume_down = "-"
+# radio = "V"
+# radio_set = "v"
 
 

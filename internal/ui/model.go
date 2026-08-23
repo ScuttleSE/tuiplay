@@ -84,6 +84,14 @@ type model struct {
 	crossfade    bool
 	crossfadeSec int
 
+	// radio holds the feeder mode state. When radio is on, the queue draws
+	// random songs from radioPool and consumes played songs, so the queue
+	// stays at radioSize songs and never empties. A manual add past
+	// radioSize pauses the auto-add until consume drains it below the size.
+	radio     bool
+	radioPool []subsonic.Song
+	radioSize int
+
 	// transcoding is true when the current track plays through a
 	// server-side transcode instead of a native decode. The status bar
 	// shows a "t" flag while it is set.
@@ -205,6 +213,10 @@ func newModel(cl *subsonic.Client, pl *player.Player, state UIState, set Setting
 	if cross <= 0 {
 		cross = 4
 	}
+	radioSize := set.RadioQueueSize
+	if radioSize <= 0 {
+		radioSize = 10
+	}
 	return model{
 		client:         cl,
 		player:         pl,
@@ -220,6 +232,7 @@ func newModel(cl *subsonic.Client, pl *player.Player, state UIState, set Setting
 		keyAction:      keyAction,
 		seekSec:        seek,
 		crossfadeSec:   cross,
+		radioSize:      radioSize,
 		nspPath:        set.NSPPath,
 		lyricsSrc:      lyricsSrc,
 		queueSupported: queueSupported,
@@ -252,6 +265,7 @@ const (
 	promptSmartName
 	promptSmartValue
 	promptSmartLimit
+	promptRadio
 )
 
 // uiState returns the interface state to persist.
@@ -353,6 +367,14 @@ type levelMsg struct {
 
 // enqueueMsg carries songs to append to the bottom of the queue.
 type enqueueMsg struct {
+	songs []subsonic.Song
+	label string
+	err   error
+}
+
+// radioMsg carries the songs that seed radio (feeder) mode. label names
+// the source. err reports a load failure.
+type radioMsg struct {
 	songs []subsonic.Song
 	label string
 	err   error
@@ -634,8 +656,20 @@ func (m model) replacePlaylist(id, name string, play bool) tea.Cmd {
 	}
 }
 
+// loadRadioPlaylist fetches a playlist's songs and returns a radioMsg to
+// seed radio (feeder) mode. It runs in a command so Update does not block.
+func (m model) loadRadioPlaylist(id, name string) tea.Cmd {
+	cl := m.client
+	return func() tea.Msg {
+		pl, err := cl.GetPlaylist(id)
+		if err != nil {
+			return radioMsg{label: name, err: err}
+		}
+		return radioMsg{songs: pl.Songs, label: name}
+	}
+}
+
 // playPlaylistByName finds a playlist by a case-insensitive name match and
-// replaces the queue with it, then starts playback. It runs the network
 // lookups in a command so the caller does not block. An exact
 // case-insensitive match wins; otherwise the first prefix match is used.
 func (m model) playPlaylistByName(name string) tea.Cmd {

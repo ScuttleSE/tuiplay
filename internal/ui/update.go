@@ -29,6 +29,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.elapsed, m.total = m.player.Position()
 		cmds := []tea.Cmd{tick(), m.checkScanStatus()}
+		// Radio (feeder) mode keeps the queue topped up to radioSize.
+		m = m.topUpRadio()
 		// While the lyrics view is active, follow the playing song: reload
 		// when the current song differs from the loaded lyrics.
 		if m.activeView == viewLyrics {
@@ -115,6 +117,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.queue = append(m.queue, msg.songs...)
 		m.status = fmt.Sprintf("Added: %s (%d songs)", msg.label, len(msg.songs))
 		return m, nil
+
+	case radioMsg:
+		if msg.err != nil {
+			m.status = "Error: " + msg.err.Error()
+			return m, nil
+		}
+		return m.startRadio(msg.songs, msg.label)
 
 	case replaceMsg:
 		if msg.err != nil {
@@ -370,6 +379,14 @@ func (m model) confirmPrompt(kind promptKind, input string) (tea.Model, tea.Cmd)
 			m.player.SetCrossfade(n)
 		}
 		return m.setTempStatus(fmt.Sprintf("Crossfade: %d seconds", n))
+	case promptRadio:
+		n, err := strconv.Atoi(input)
+		if err != nil || n < 1 {
+			return m.setTempStatus("Invalid radio queue size.")
+		}
+		m.radioSize = n
+		nm := m.topUpRadio()
+		return nm.setTempStatus(fmt.Sprintf("Radio queue size: %d", n))
 	case promptSearchField:
 		lvl := m.top()
 		if lvl.search != nil && m.searchEditKey != "" {
@@ -511,6 +528,15 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.promptActive = true
 		m.promptKind = promptCrossfade
 		m.promptLabel = "Crossfade seconds"
+		m.promptInput = ""
+		return m, nil
+
+	case config.ActRadio:
+		return m.startRadioFromView()
+	case config.ActRadioSet:
+		m.promptActive = true
+		m.promptKind = promptRadio
+		m.promptLabel = "Radio queue size"
 		m.promptInput = ""
 		return m, nil
 
@@ -1046,6 +1072,106 @@ func (m model) toggleRepeat() (tea.Model, tea.Cmd) {
 	return m.setTempStatus("Repeat mode: off")
 }
 
+// startRadioFromView starts radio (feeder) mode from the focused right-pane
+// source. On a playlist row it loads the playlist songs over the network. On
+// a Tracks level (including search results) it seeds from the level's songs.
+// Other sources show a note. When radio is already on, it turns it off.
+func (m model) startRadioFromView() (tea.Model, tea.Cmd) {
+	if m.radio {
+		return m.toggleRadioOff()
+	}
+	if m.focus != focusRight {
+		return m.setTempStatus("Radio: focus a playlist or search result first.")
+	}
+	lvl := m.top()
+	switch lvl.kind {
+	case navPlaylists:
+		row, ok := lvl.selected()
+		if !ok || row.id == newSmartRowID {
+			return m.setTempStatus("Radio: select a playlist.")
+		}
+		nm, cmd := m.setTempStatus("Radio: loading " + row.label + "...")
+		return nm, tea.Batch(cmd, m.loadRadioPlaylist(row.id, row.name))
+	case navTracks:
+		songs := make([]subsonic.Song, 0, len(lvl.rows))
+		for _, r := range lvl.rows {
+			songs = append(songs, r.song)
+		}
+		return m.startRadio(songs, lvl.title)
+	default:
+		return m.setTempStatus("Radio: needs a playlist or a Tracks list.")
+	}
+}
+
+// startRadio turns radio (feeder) mode on with pool as the source. It
+// forces consume on and repeat off, replaces the queue with radioSize
+// songs drawn from the pool, and starts playback at the first song. An
+// empty pool shows a note and leaves the mode off.
+func (m model) startRadio(pool []subsonic.Song, label string) (tea.Model, tea.Cmd) {
+	if len(pool) == 0 {
+		return m.setTempStatus("Radio: source has no songs.")
+	}
+	m.player.Stop()
+	m.radio = true
+	m.radioPool = pool
+	m.consume = true
+	m.repeat = false
+	m.queue = nil
+	m.queueCursor = 0
+	m.queueIndex = -1
+	m.sourcePlaylistID = ""
+	m.sourcePlaylistName = ""
+	m.topUpInPlace()
+	if len(m.queue) == 0 {
+		return m.setTempStatus("Radio: source has no songs.")
+	}
+	m.queueIndex = 0
+	tm, cmd := m.playCurrent()
+	nm := tm.(model)
+	nm.refreshXF()
+	sm, scmd := nm.setTempStatus(fmt.Sprintf("Radio mode: on (%s)", label))
+	return sm, tea.Batch(cmd, scmd)
+}
+
+// toggleRadioOff turns radio (feeder) mode off. It leaves the queue and
+// playback as they are.
+func (m model) toggleRadioOff() (tea.Model, tea.Cmd) {
+	m.radio = false
+	m.radioPool = nil
+	return m.setTempStatus("Radio mode: off")
+}
+
+// topUpInPlace appends random pool songs until the queue holds radioSize
+// songs. It avoids adding a song identical to the current queue tail. It
+// does nothing when radio is off, the pool is empty, or the queue already
+// holds radioSize or more songs.
+func (m *model) topUpInPlace() {
+	if !m.radio || len(m.radioPool) == 0 || m.radioSize < 1 {
+		return
+	}
+	for len(m.queue) < m.radioSize {
+		s := m.radioPool[rand.Intn(len(m.radioPool))]
+		if len(m.queue) > 0 && len(m.radioPool) > 1 && m.queue[len(m.queue)-1].ID == s.ID {
+			s = m.radioPool[rand.Intn(len(m.radioPool))]
+		}
+		m.queue = append(m.queue, s)
+	}
+}
+
+// topUpRadio tops the queue up on a value receiver and refreshes the
+// crossfade snapshot. It returns the updated model for use in Update.
+func (m model) topUpRadio() model {
+	if !m.radio {
+		return m
+	}
+	before := len(m.queue)
+	m.topUpInPlace()
+	if len(m.queue) != before {
+		m.refreshXF()
+	}
+	return m
+}
+
 // cursorHome moves the cursor of the focused pane to the top.
 func (m *model) cursorHome() {
 	if m.focus == focusQueue {
@@ -1544,6 +1670,11 @@ func (m model) advance(ended bool) (tea.Model, tea.Cmd) {
 	if m.consume && m.queueIndex >= 0 && m.queueIndex < len(m.queue) {
 		m.consumeCurrent()
 		consumeRemoved = true
+	}
+
+	// Radio mode refills the queue so it never runs dry after a consume.
+	if m.radio {
+		m.topUpInPlace()
 	}
 
 	idx, stop := nextIndexPure(len(m.queue), m.queueIndex, m.repeat, m.shuffle, consumeRemoved)

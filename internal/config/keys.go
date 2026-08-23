@@ -46,6 +46,8 @@ const (
 	ActRateDown      = "rate_down"
 	ActVisualizer    = "visualizer"
 	ActEdit          = "edit"
+	ActRadio         = "radio"
+	ActRadioSet      = "radio_set"
 )
 
 // DefaultKeys returns the built-in action-to-key map.
@@ -90,6 +92,8 @@ func DefaultKeys() map[string]string {
 		ActRateDown:      "½",
 		ActVisualizer:    "5",
 		ActEdit:          "e",
+		ActRadio:         "V",
+		ActRadioSet:      "v",
 	}
 }
 

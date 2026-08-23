@@ -87,6 +87,7 @@ func main() {
 	set := ui.Settings{
 		SeekSeconds:           cfg.SeekSeconds,
 		CrossfadeSeconds:      cfg.CrossfadeSeconds,
+		RadioQueueSize:        cfg.RadioSize(),
 		NSPPath:               cfg.NSPPath,
 		LrclibDBPath:          cfg.LrclibDBPath,
 		LyricsCacheDir:        cacheDir,

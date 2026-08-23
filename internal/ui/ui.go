@@ -83,6 +83,9 @@ type Settings struct {
 	SeekSeconds int
 	// CrossfadeSeconds is the crossfade length. A value of zero means 4.
 	CrossfadeSeconds int
+	// RadioQueueSize is the target queue size for radio (feeder) mode. A
+	// value of zero means 10.
+	RadioQueueSize int
 	// NSPPath is the directory for smart-playlist files. An empty value
 	// hides the smart-playlist feature.
 	NSPPath string

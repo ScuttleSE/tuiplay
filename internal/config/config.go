@@ -40,6 +40,12 @@ seek_seconds = 10
 # crossfade on and off with a key.
 crossfade_seconds = 4
 
+# Optional: the target queue size for radio (feeder) mode. Default is 10.
+# In radio mode the queue draws random songs from a playlist or a search
+# result and consumes played songs, so the queue never empties and never
+# grows past this size on its own.
+radio_queue_size = 10
+
 # Optional: the directory where tuiplay writes smart-playlist files (.nsp).
 # Point this at a directory that Navidrome scans, such as a path listed in
 # the server PlaylistsPath, or a folder inside a music library. The path may
@@ -128,8 +134,7 @@ split_ratio = 0.6
 # repeat = "r"
 # shuffle = "z"
 # crossfade = "x"
-# crossfade_set = "X"
-# save_playlist = "S"
+# crossfade_set = "X"# save_playlist = "S"
 # save_overwrite = "ctrl+s"
 # delete = "delete"
 # clear = "c"
@@ -148,6 +153,8 @@ split_ratio = 0.6
 # rate_down = "½"
 # visualizer = "5"
 # edit = "e"
+# radio = "V"
+# radio_set = "v"
 `
 
 // ErrCreatedTemplate reports that Load found no config file and wrote a
@@ -179,6 +186,10 @@ type Config struct {
 	// CrossfadeSeconds is the crossfade length. A value of zero disables
 	// crossfade until the user turns it on.
 	CrossfadeSeconds int `toml:"crossfade_seconds"`
+
+	// RadioQueueSize is the target queue size for radio (feeder) mode. A
+	// value of zero means the default of 10.
+	RadioQueueSize int `toml:"radio_queue_size"`
 
 	// NSPPath is the directory where tuiplay writes smart-playlist files
 	// (.nsp). An empty value hides the smart-playlist feature.
@@ -289,6 +300,15 @@ func (c *Config) ResolvedLyricsProviders() []string {
 		return DefaultLyricsProviders
 	}
 	return c.LyricsProviders
+}
+
+// RadioSize returns the radio (feeder) target queue size. A zero config
+// value means the default of 10.
+func (c *Config) RadioSize() int {
+	if c.RadioQueueSize <= 0 {
+		return 10
+	}
+	return c.RadioQueueSize
 }
 
 // ControlSocketPath returns the control socket path with a leading ~
