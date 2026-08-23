@@ -38,6 +38,24 @@ To **build** the player from source you additionally need:
 
 ## Installation
 
+### Prebuilt binaries
+
+Each release attaches Linux binaries for `amd64` and `arm64` on the
+[GitHub Releases page](https://github.com/ScuttleSE/tuiplay/releases).
+Download the one for your architecture, make it executable, and run it:
+
+```sh
+chmod +x tuiplay-*-linux-amd64
+./tuiplay-*-linux-amd64
+```
+
+The binaries are dynamically linked against ALSA, so you need the ALSA
+runtime library installed (`libasound2` on Debian/Ubuntu, `alsa-lib` on
+Arch). They are built on Debian 11 (glibc 2.31), so they run on that and
+newer distributions.
+
+### From source
+
 Build it from source:
 
 ```sh

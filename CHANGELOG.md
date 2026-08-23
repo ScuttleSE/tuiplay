@@ -5,6 +5,40 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-08-23
+
+### Added
+- GitHub release binaries. A new `.github/workflows/release.yml` builds Linux
+  binaries for `linux/amd64` and `linux/arm64` on a `v*` tag and attaches them
+  to the GitHub Release. The binaries build inside a Debian 11 "bullseye"
+  container (glibc 2.31) with cgo and dynamic ALSA linking, so they run on a
+  wide range of distributions but need `libasound2` (`alsa-lib`) installed at
+  runtime. The amd64 job builds natively; the arm64 job builds under QEMU
+  emulation. The README documents the prebuilt binaries and the runtime
+  dependency.
+
+### Changed
+- The release documentation now states that the GitHub release is the primary
+  target and its body must list every change since the last GitHub release,
+  while the Gitea changelog is secondary. It also documents writing the
+  `CHANGELOG.md` section before tagging and fixing a wrong release body with a
+  `PATCH` to the GitHub Releases API.
+
+## [0.7.1] - 2026-08-23
+
+### Added
+- Radio (feeder) queue mode. It keeps a bounded, self-refilling queue drawn
+  from a playlist or a search result. `V` (`radio`) turns it on from the
+  focused source and off again; `v` (`radio_set`) sets the target queue size.
+  The mode snapshots the source songs into a candidate pool, forces consume on
+  and repeat off, and keeps the queue at `radio_queue_size` random songs
+  (default 10). It refills on each one-second tick and after a consume, so the
+  queue never empties. It avoids adding a song equal to the current queue tail,
+  so it does not repeat back to back. A manual add past the target size pauses
+  the auto-add until consume drains the queue below the size again. The status
+  bar shows an `F` flag while radio mode is on. The new `radio_queue_size`
+  config key sets the default target size.
+
 ## [0.7.0] - 2026-08-22
 
 ### Added

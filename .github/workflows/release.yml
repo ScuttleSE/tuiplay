@@ -1,0 +1,118 @@
+name: Release binaries
+
+# Build the Linux release binaries and attach them to the GitHub Release
+# for a v* tag. The release itself is created by the mirror tooling that
+# pushes the tag; this workflow waits for that release to exist, then
+# uploads the binaries as assets. It does not change the release body.
+#
+# The binaries are dynamically linked against ALSA, so a user needs
+# libasound2 (alsa-lib) installed at runtime. They are built inside a
+# Debian 11 "bullseye" container (glibc 2.31) to keep a low glibc floor,
+# so the binaries run on a wide range of distributions.
+#
+# amd64 builds natively. arm64 builds under QEMU emulation inside an
+# arm64 bullseye container, so cgo uses a native aarch64 toolchain and
+# the native libasound2-dev. Emulated builds are slow but simple and
+# correct.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+# The upstream Go version to install inside the container. Debian
+# bullseye ships a much older Go, so the job downloads the official
+# toolchain. Keep this in step with the go directive in go.mod.
+env:
+  GO_VERSION: "1.27.0"
+
+jobs:
+  build:
+    name: Build linux/${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            goarch: amd64
+          - arch: arm64
+            platform: linux/arm64
+            goarch: arm64
+
+    steps:
+      - name: Set up QEMU for cross-arch emulation
+        if: matrix.arch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from the tag
+        id: version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build the binary in a bullseye container
+        run: |
+          set -eu
+          out="tuiplay-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}"
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/src" -w /src \
+            -e GO_VERSION="${GO_VERSION}" \
+            -e GOARCH="${{ matrix.goarch }}" \
+            -e OUT="$out" \
+            debian:bullseye-slim bash -euo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                ca-certificates curl gcc pkg-config libasound2-dev
+              # Install the official Go toolchain for this container arch.
+              curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" \
+                | tar -C /usr/local -xz
+              export PATH="/usr/local/go/bin:$PATH"
+              export CGO_ENABLED=1
+              go build -trimpath -ldflags="-s -w" -o "dist/${OUT}" ./cmd/tuiplay
+            '
+
+      - name: Show the built binary
+        run: |
+          ls -l dist/
+          file "dist/tuiplay-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}" || true
+
+      - name: Wait for the GitHub Release to exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${tag}"
+          # The mirror push creates the release. Poll for it so the upload
+          # does not race the create step.
+          for i in $(seq 1 30); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" "$api")"
+            if [ "$code" = "200" ]; then
+              echo "release ${tag} is present"
+              exit 0
+            fi
+            echo "release ${tag} not ready yet (HTTP ${code}); retry ${i}/30"
+            sleep 10
+          done
+          echo "release ${tag} did not appear in time" >&2
+          exit 1
+
+      - name: Attach the binary to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/tuiplay-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}
+          # Do not set body/name here: the mirror sets the changelog body
+          # and this must not overwrite it.
+          fail_on_unmatched_files: true
