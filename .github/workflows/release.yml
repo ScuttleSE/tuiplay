@@ -71,7 +71,7 @@ jobs:
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
               apt-get install -y --no-install-recommends \
-                ca-certificates curl gcc pkg-config libasound2-dev
+                ca-certificates curl gcc libc6-dev pkg-config libasound2-dev
               # Install the official Go toolchain for this container arch.
               curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" \
                 | tar -C /usr/local -xz
