@@ -49,7 +49,8 @@ func (m model) overlayHelp(screen string) string {
 		"",
 		"1 hide panel     2 navigation",
 		"3 search         4 lyrics",
-		"5 visualizer     Tab switch pane",
+		"5 visualizer     6 cover art",
+		"Tab switch pane",
 		"§ rate up        ½ rate down",
 		"Enter select/drill",
 		"a add track      Space add all",
@@ -96,16 +97,15 @@ func (m model) overlayVisualizer() string {
 	case visWave:
 		body = waveRows(buf, m.visWave, w, plotH)
 	case visSpectrumStereo:
-		frames := make([][2]float64, visSampleWindow)
-		fn := m.player.SamplesStereo(frames)
-		body = stereoSpectrumRows(frames[:fn], w, plotH)
-	case visEllipse:
-		body = ellipseRows(buf, m.visPhase, w, plotH)
-	case visLorenz:
-		body = lorenzRows(&m.visLorenz, m.visPhase, w, plotH)
+		body = stereoSpectrumRows(m.visStereoL, m.visStereoR, w, plotH, m.visPhase, m.visBeat)
+	case visRadial:
+		body = radialRows(m.visRadialLevels, rms(buf), m.visPhase, m.visBeat,
+			m.visSpark.RadialReach, m.visSpark.RadialCore, w, plotH)
+	case visParticles:
+		body = particleRows(&m.visParticles, m.visPhase, m.visBeat, w, plotH)
 	default:
-		cols := spectrumColumns(spectrumLevels(buf, w), plotH)
-		body = renderBars(cols, m.visPeaks, w, plotH)
+		cols := spectrumColumns(m.visLevels, plotH)
+		body = renderBars(cols, m.visPeaks, w, plotH, m.visPhase, m.visBeat)
 	}
 	title := trim("Visualizer ["+visModeName(m.visMode)+"]  Tab switch  Esc close", w)
 	return m.styles.colHeader.Render(title) + "\n" + body
@@ -280,7 +280,11 @@ func (m model) renderNavPane(width, height int) string {
 	if focused {
 		style = m.styles.focusHeader
 	}
-	header := style.Render(trim(lvl.title, width))
+	title := lvl.title
+	if lvl.kind == navCover {
+		title += "  [" + coverModeName(m.coverMode) + "]  Space switch"
+	}
+	header := style.Render(trim(title, width))
 	rule := m.styles.rule.Render(strings.Repeat("─", width))
 
 	// Build display rows, with the back row first when present.
@@ -307,6 +311,8 @@ func (m model) renderNavPane(width, height int) string {
 		if active >= 0 {
 			displayCursor = base + active
 		}
+	} else if lvl.kind == navCover {
+		rows = append(rows, m.coverRows(lvl, width, height-2)...)
 	} else if lvl.kind == navSearch {
 		rows = append(rows, m.renderSearchRows(lvl, width, focused)...)
 	} else {
@@ -360,6 +366,47 @@ func (m model) lyricsRows(lvl navLevel, width int) ([]string, int) {
 		}
 	}
 	return out, active
+}
+
+// coverRows renders the cover-art view into height rows of width cells. It
+// shows a message when nothing plays, the art is missing, or a download is
+// still in flight. Otherwise it renders the decoded image with the active
+// render mode.
+func (m model) coverRows(lvl navLevel, width, height int) []string {
+	if height < 1 {
+		height = 1
+	}
+	msg := ""
+	switch {
+	case lvl.loading && lvl.coverImg == nil:
+		msg = "Loading cover..."
+	case lvl.coverSong == "" && lvl.coverMissing:
+		msg = "No song playing."
+	case lvl.coverImg == nil:
+		msg = "No cover art."
+	}
+	if msg != "" {
+		out := make([]string, height)
+		mid := height / 2
+		for i := range out {
+			if i == mid {
+				out[i] = m.styles.plain.Render(pad(trim(msg, width), width))
+			} else {
+				out[i] = strings.Repeat(" ", width)
+			}
+		}
+		return out
+	}
+	art := coverRender(lvl.coverImg, m.coverMode, width, height)
+	rows := strings.Split(art, "\n")
+	// Pad or trim to exactly height rows so the pane layout stays stable.
+	for len(rows) < height {
+		rows = append(rows, strings.Repeat(" ", width))
+	}
+	if len(rows) > height {
+		rows = rows[:height]
+	}
+	return rows
 }
 
 // settings block, and the Search and Reset action rows.

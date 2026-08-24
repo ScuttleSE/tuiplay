@@ -5,6 +5,47 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.20] - 2026-08-24
+
+### Added
+- Album cover-art view. `6` (`show_cover`) shows the cover of the currently
+  playing song in the right pane. It follows the playing song and prefetches
+  the art in the background. The renderer has three modes, cycled with `Space`
+  while the cover view is focused: half-block (full color), braille
+  (high-resolution monochrome), and shaded blocks. It scales the image with a
+  Catmull-Rom kernel and corrects for the terminal cell aspect so the art is
+  not stretched.
+- A completely reworked fullscreen visualizer. Every mode now shares a vivid,
+  reactive palette (`vividHex`): the spectral position sets the hue (bass warm,
+  treble cool), loudness sets the brightness, a drifting phase breathes the
+  scene, and a detected beat flashes the whole screen. The spectrum draws with
+  half-block glyphs for double vertical resolution, so a small window still
+  reads smooth. Two new modes replace the old ellipse and Lorenz modes: a
+  radial bloom that radiates the spectrum from a pulsing center, and beat
+  sparks that burst particles from the center on each beat (with an optional
+  fading streak). The animation tick runs at about 30 fps.
+- A `[visualizer]` config table that tunes every visualizer mode. Shared:
+  `hue_speed`, `beat_sensitivity`. Spectrum: `spectrum_smoothing`,
+  `spectrum_peak_gravity`, `spectrum_tilt`, `spectrum_monstercat`. Waveform:
+  `wave_falloff`. Stereo: `stereo_smoothing`. Radial bloom: `radial_decay`,
+  `radial_reach`, `radial_core`. Beat sparks: `spark_life`, `spark_speed`,
+  `spark_gravity` (a negative value gives straight streaks), `spark_count`,
+  and `spark_trail` (comet streaks). Each key is optional and falls back to a
+  built-in default.
+
+### Changed
+- The visualizer keeps its own vivid palette; the UI theme no longer changes
+  it. The spectrum, waveform, radial bloom, and stereo spectrum now smooth
+  their levels toward the previous frame, so bars glide and blooms fall off
+  gradually instead of snapping. The spectrum peak caps fall under gravity.
+- Song info (`i`) and artist info (`I`) now push onto the browse stack from any
+  right-pane view, not only from the browse view.
+
+### Fixed
+- The cover-art aspect ratio is corrected so the image is not stretched
+  vertically.
+- A late queue restore that paused freshly started playback is dropped.
+
 ## [0.7.4] - 2026-08-23
 
 ### Fixed

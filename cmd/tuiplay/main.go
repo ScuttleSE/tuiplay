@@ -95,6 +95,7 @@ func main() {
 		LyricsProviders:       cfg.ResolvedLyricsProviders(),
 		ControlSocket:         cfg.ControlSocketPath(),
 		Theme:                 theme,
+		Visualizer:            visualizerSettings(cfg.Visualizer.Resolved()),
 	}
 
 	final, err := ui.Run(client, pl, state, set, keys)
@@ -113,6 +114,30 @@ func main() {
 		SplitRatio: final.SplitRatio,
 	}); serr != nil {
 		fmt.Fprintln(os.Stderr, "warning: could not save UI state:", serr)
+	}
+}
+
+// visualizerSettings maps the resolved config visualizer tunables to the ui
+// settings type.
+func visualizerSettings(v config.VisualizerConfig) ui.VisualizerSettings {
+	return ui.VisualizerSettings{
+		SparkLife:    v.SparkLife,
+		SparkSpeed:   v.SparkSpeed,
+		SparkGravity: v.SparkGravity,
+		SparkCount:   v.SparkCount,
+		SparkTrail:   v.SparkTrail,
+		RadialDecay:  v.RadialDecay,
+		RadialReach:  v.RadialReach,
+		RadialCore:   v.RadialCore,
+
+		HueSpeed:            v.HueSpeed,
+		BeatSensitivity:     v.BeatSensitivity,
+		SpectrumSmoothing:   v.SpectrumSmoothing,
+		SpectrumPeakGravity: v.SpectrumPeakGravity,
+		SpectrumTilt:        v.SpectrumTilt,
+		SpectrumMonstercat:  v.SpectrumMonstercat,
+		WaveFalloff:         v.WaveFalloff,
+		StereoSmoothing:     v.StereoSmoothing,
 	}
 }
 

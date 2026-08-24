@@ -14,11 +14,14 @@ A terminal music player that streams from a [Navidrome](https://www.navidrome.or
 - Browse the library by artist, album, genre, release year, and track (organized by ID3 tags).
 - Search the library with an ncmpcpp-style multi-field form.
 - Build and play a queue of tracks, with consume, repeat, random, and crossfade modes.
+- Radio (feeder) mode: a bounded, self-refilling queue drawn from a playlist or a search result.
 - Playback controls: play/pause, stop, next, previous, seek, and volume.
-- Playlists: play, save, overwrite, delete, and build Navidrome smart playlists (`.nsp`).
+- Playlists: play, save, overwrite, delete, and build or edit Navidrome smart playlists (`.nsp`).
 - Rate songs 0-5 (saved on the server), with a thumbs-down marker for a dislike.
 - Synchronized lyrics that follow the playing song, from a local cache, an lrclib dump, or network providers.
-- A fullscreen audio visualizer with a frequency spectrum and a waveform mode.
+- Album cover art in the right pane, rendered in three text-graphics modes (half-block, braille, blocks).
+- A fullscreen audio visualizer with five modes: spectrum, waveform, stereo spectrum, ellipse, and Lorenz attractor.
+- Color themes, including several Catppuccin variants, with per-role color overrides.
 - External control over a unix socket, so a streamdeck or a script can drive playback.
 - A status bar showing the current track, the playback state, the progress, and the mode flags.
 - Scrobble now-playing notifications back to Navidrome.
@@ -94,6 +97,14 @@ seek_seconds = 10
 # Optional: the crossfade length in seconds. Default is 4.
 crossfade_seconds = 4
 
+# Optional: the target queue size for radio (feeder) mode. Default is 10.
+radio_queue_size = 10
+
+# Optional: the color theme. Ships: default, catppuccin-latte,
+# catppuccin-frappe, catppuccin-macchiato, catppuccin-mocha. Empty or omitted
+# means the classic ncmpcpp "default" look.
+# theme = "catppuccin-mocha"
+
 # Optional: the directory where tuiplay writes smart-playlist files (.nsp).
 # Point it at a directory Navidrome scans. Empty hides the feature.
 # nsp_path = "/srv/navidrome/playlists"
@@ -115,6 +126,13 @@ crossfade_seconds = 4
 # Optional: a unix socket path for external control (see "External control").
 # Empty turns the feature off. A leading ~ expands to your home directory.
 # control_socket = "~/.config/tuiplay/control.sock"
+
+# Optional: override individual theme colors. Each key is a role (for example
+# album or progress) and each value is a #rrggbb hex color. These apply on top
+# of the named theme. A table must come after all the scalar keys above.
+# [theme_colors]
+# album = "#89b4fa"
+# progress = "#a6e3a1"
 ```
 
 The password never leaves your machine as clear text. The client sends a salted MD5 token to the server on every request, as the Subsonic API specifies.
@@ -140,18 +158,18 @@ The screen has two panes side by side:
   four columns: Artist, Track + Title, Album, and Time. The current track is
   shown in bold. The selected row shows a colored bar. A rating shows as
   filled stars before the title, or a thumbs-down glyph for a dislike.
-- The **right pane holds three parallel views**: the browse navigation, the
-  search form, and the lyrics of the playing song. The `2`, `3`, and `4` keys
-  switch between them. Each view keeps its own state and position, so
-  switching away and back does not reset it.
+- The **right pane holds four parallel views**: the browse navigation, the
+  search form, the lyrics of the playing song, and the album cover art. The
+  `2`, `3`, `4`, and `6` keys switch between them. Each view keeps its own
+  state and position, so switching away and back does not reset it.
 
 You can hide the right pane so the queue fills the whole width.
 
 A header line at the top shows the queue summary and the volume. A green
 progress bar and a status bar sit at the bottom. The status bar shows the
 mode flags at the right, like `[Rx]` (`R` repeat, `c` consume, `r` random,
-`x` crossfade, `t` transcoding), and a spinner while the server scans the
-library.
+`x` crossfade, `F` radio, `t` transcoding), and a spinner while the server
+scans the library.
 
 The right pane remembers whether it was shown and reopens in that state on
 the next run.
@@ -191,14 +209,47 @@ and the view scrolls to follow playback. The page title carries a note
 glyph: `♬` for synced, per-line timed lyrics and `♪` for plain, untimed
 lyrics. The view follows the song as it changes.
 
+### Cover art
+
+Press `6` to show the album cover of the playing song in the right pane. The
+image is downloaded from the server, decoded, and drawn as colored terminal
+text. While the cover view is focused, `Space` cycles three render modes:
+
+- **half-block** — two full-color pixels per cell using the `▀` glyph; the
+  best look for a color cover.
+- **braille** — 2×4 dots per cell for a high-resolution, near-monochrome look.
+- **blocks** — shade glyphs picked by brightness with a per-cell color.
+
+`Tab` still moves focus back to the queue. The view follows the song as it
+changes. When nothing plays it shows "No song playing"; a song with no cover
+art shows "No cover art".
+
+### Radio (feeder) mode
+
+Radio mode keeps a bounded queue that refills itself, so it never empties.
+Focus a playlist row (on the Playlists level) or a Tracks list (a Tracks
+entrypoint or a search result) and press `V` to turn it on; press `V` again
+to turn it off. `v` sets the target queue size at runtime (the default comes
+from `radio_queue_size`, 10).
+
+Turning it on snapshots the source songs into a pool, forces consume on and
+repeat off, and fills the queue with that many random songs. It refills after
+each consumed song and on each one-second tick, and avoids repeating the same
+song back to back. A manual add past the target size pauses the auto-add until
+the queue drains below the size again. The status bar shows an `F` flag while
+radio mode is on.
+
 ### Smart playlists
 
 When `nsp_path` points at a directory Navidrome scans, the Playlists level
 shows a `[New smart playlist]` row. It opens a guided builder for a name,
 one or more conditions (a field, an operator, and a value), an optional
 sort field, order, and limit. `Save` writes a Navidrome `.nsp` file and
-triggers an incremental scan so Navidrome imports it. Deleting such a
-playlist also removes its `.nsp` file so it does not reappear on the next
+triggers an incremental scan so Navidrome imports it. The condition fields
+include title, album, artist, genre, year, loved, rating, playcount,
+lastplayed, dateadded, and filepath. Press `e` on a playlist row to reopen
+the builder loaded with that playlist's `.nsp` file and edit it. Deleting such
+a playlist also removes its `.nsp` file so it does not reappear on the next
 scan.
 
 ### Ratings
@@ -210,10 +261,23 @@ thumbs-down glyph in the queue. Higher ratings show as filled stars.
 
 ### Visualizer
 
-`5` opens a fullscreen audio visualizer. `Tab` or `Space` switches between a
-frequency spectrum and a waveform. `Esc` or `5` closes it. The bars and the
-waveform are colored along a green-yellow-red height gradient that adapts to
-your terminal's color support. Playback keys still work while it is open.
+`5` opens a fullscreen audio visualizer. `Tab` or `Space` cycles five modes:
+a frequency spectrum, a time-domain waveform, a stereo mirror spectrum, a
+pulsing ellipse, and a Lorenz attractor. `Esc` or `5` closes it. The spectrum
+and waveform use a green-yellow-red height gradient; the ellipse and Lorenz
+use a rainbow hue wheel. All colors adapt to your terminal's color support.
+Playback keys still work while it is open.
+
+### Themes
+
+The `theme` config key picks a color theme. tuiplay ships `default` (the
+classic ncmpcpp look), plus `catppuccin-latte`, `catppuccin-frappe`,
+`catppuccin-macchiato`, and `catppuccin-mocha`. An empty or omitted value uses
+`default`. The optional `[theme_colors]` table overrides single roles (for
+example `album` or `progress`) with `#rrggbb` hex colors on top of the named
+theme. An unknown theme name, an unknown role, or a malformed hex value is a
+config error. The fullscreen visualizer keeps its own colors and is not
+affected by the theme.
 
 ### Key bindings
 
@@ -227,6 +291,7 @@ rebindable in the config; see the `[keys]` section below.
 | `3`            | Show the search form                     |
 | `4`            | Show the lyrics of the playing song      |
 | `5`            | Open the fullscreen visualizer           |
+| `6`            | Show the album cover of the playing song |
 | `Tab`          | Move focus between the queue pane and the right pane |
 | `j` / `Down`   | Move the cursor down                     |
 | `k` / `Up`     | Move the cursor up                       |
@@ -241,6 +306,7 @@ rebindable in the config; see the `[keys]` section below.
 | `c`            | Clear the queue (asks to confirm)        |
 | `i`            | Show detailed info for the selected song |
 | `I`            | Show artist info (not implemented yet)   |
+| `e`            | Edit the selected smart playlist (Playlists level) |
 | `§`            | Raise the song rating by one (max 5)     |
 | `½`            | Lower the song rating by one (min 0)     |
 | `R`            | Toggle consume mode                      |
@@ -248,6 +314,8 @@ rebindable in the config; see the `[keys]` section below.
 | `z`            | Toggle random mode                       |
 | `x`            | Toggle crossfade                         |
 | `X`            | Set the crossfade length in seconds      |
+| `V`            | Toggle radio (feeder) mode from the focused source |
+| `v`            | Set the radio target queue size          |
 | `S`            | Save the queue as a new playlist         |
 | `Ctrl+s`       | Overwrite the source playlist, or save as new |
 | `F1`           | Show the help card                       |
@@ -272,6 +340,9 @@ rebindable in the config; see the `[keys]` section below.
 - `x` / `X` crossfade: `x` toggles it, `X` sets the length. When on, the
   player overlaps the outgoing and incoming tracks with an equal-power
   transition.
+- `V` / `v` radio (feeder): `V` toggles a bounded, self-refilling queue drawn
+  from the focused playlist or search result; `v` sets its target size. See
+  the "Radio (feeder) mode" section above.
 
 ### Deleting and clearing
 

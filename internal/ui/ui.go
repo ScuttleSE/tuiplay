@@ -108,6 +108,46 @@ type Settings struct {
 	// Theme is the resolved color theme. The caller resolves it from the
 	// config before it calls Run.
 	Theme Theme
+	// Visualizer holds the beat-spark visualizer tunables, already
+	// resolved to their effective values.
+	Visualizer VisualizerSettings
+}
+
+// VisualizerSettings holds the effective beat-spark visualizer tunables.
+type VisualizerSettings struct {
+	// SparkLife is how many frames a spark lives.
+	SparkLife int
+	// SparkSpeed scales the launch speed.
+	SparkSpeed float64
+	// SparkGravity is the downward pull in sub-cells per frame squared.
+	SparkGravity float64
+	// SparkCount scales how many sparks a beat spawns.
+	SparkCount float64
+	// SparkTrail is the number of trailing positions per spark.
+	SparkTrail int
+	// RadialDecay is the per-frame retained fraction of the radial bloom
+	// band levels when the audio quiets. Higher falls slower.
+	RadialDecay float64
+	// RadialReach scales how far the bloom rays extend.
+	RadialReach float64
+	// RadialCore scales the pulsing inner core radius.
+	RadialCore float64
+	// HueSpeed scales the palette hue drift across all modes.
+	HueSpeed float64
+	// BeatSensitivity scales how easily a beat triggers.
+	BeatSensitivity float64
+	// SpectrumSmoothing is the spectrum bar falloff fraction.
+	SpectrumSmoothing float64
+	// SpectrumPeakGravity is the spectrum peak-cap fall acceleration.
+	SpectrumPeakGravity float64
+	// SpectrumTilt lifts the higher spectrum bars.
+	SpectrumTilt float64
+	// SpectrumMonstercat is the neighbor-bleed strength of the spectrum.
+	SpectrumMonstercat float64
+	// WaveFalloff is the waveform envelope decay fraction.
+	WaveFalloff float64
+	// StereoSmoothing is the stereo spectrum bar falloff fraction.
+	StereoSmoothing float64
 }
 
 // Run starts the interface and blocks until the user quits. It reads the

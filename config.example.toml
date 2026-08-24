@@ -25,6 +25,59 @@ crossfade_seconds = 4
 # grows past this size on its own.
 radio_queue_size = 10
 
+# Optional: tune the beat-spark visualizer mode (the "5" key, "beat sparks").
+# Every key is optional; an unset key uses the default shown.
+# [visualizer]
+# How many animation frames a spark lives. Higher = sparks fly farther and
+# linger longer. Default 45.
+# spark_life = 45
+# Scales the launch speed. 1.0 reaches the window edge over a spark's life.
+# Higher throws sparks out faster and farther. Default 1.0.
+# spark_speed = 1.0
+# Downward pull in sub-cells per frame^2. Default 0.045. Set a negative
+# value to disable gravity, so sparks fly straight out as streaks.
+# spark_gravity = 0.045
+# Scales how many sparks a beat spawns. Higher fills the screen more.
+# Default 1.0.
+# spark_count = 1.0
+# The number of trailing positions drawn behind each spark, as a fading
+# streak. 0 (default) draws points; a value like 6 gives comet streaks.
+# spark_trail = 0
+# The radial bloom (the "radial bloom" mode) falloff. This is the fraction
+# of the previous frame's bloom kept when the audio quiets: higher falls
+# slower and smoother, 0 falls off instantly. Default 0.90.
+# radial_decay = 0.90
+# Scales how far the bloom rays reach from the center. Higher fills more of
+# the window. Default 1.0.
+# radial_reach = 1.0
+# Scales the pulsing inner core radius of the bloom. Default 1.0.
+# radial_core = 1.0
+# Shared across all modes:
+# Scales how fast the palette hue drifts over time. 0 freezes it. Default 1.0.
+# hue_speed = 1.0
+# Scales how easily a beat triggers (the beat flash and the spark bursts).
+# Higher flashes more readily. Default 1.0.
+# beat_sensitivity = 1.0
+# Spectrum mode:
+# Bar falloff: the fraction of the previous frame kept as a bar falls.
+# Higher glides more; 0 is instant. Default 0.80.
+# spectrum_smoothing = 0.80
+# Peak-cap fall acceleration in eighths per frame^2. Higher drops faster.
+# Default 0.9.
+# spectrum_peak_gravity = 0.9
+# Lifts the higher-frequency bars so bass does not swamp a narrow window.
+# 0 disables the tilt. Default 0.12.
+# spectrum_tilt = 0.12
+# Neighbor-bleed (monstercat) strength that smooths single-column spikes.
+# Higher spreads less; a value of 1 or below disables it. Default 2.8.
+# spectrum_monstercat = 2.8
+# Waveform mode:
+# Envelope falloff: the fraction kept as the waveform falls. Default 0.90.
+# wave_falloff = 0.90
+# Stereo spectrum mode:
+# Bar falloff for the mirrored stereo bars. Default 0.80.
+# stereo_smoothing = 0.80
+
 # Interface state. tuiplay updates this section on exit.
 [ui]
 # The last right-pane state: "nav" (navigation panel shown) or "hidden".

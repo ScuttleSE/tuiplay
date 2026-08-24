@@ -187,3 +187,39 @@ func (c *Client) CoverArtURL(id string) (string, error) {
 	extra.Set("id", id)
 	return c.requestURL("getCoverArt", extra)
 }
+
+// CoverArt downloads the cover art image bytes for the given id. When size
+// is positive, it asks the server to scale the image to that many pixels on
+// its longest side. The getCoverArt endpoint returns raw image bytes, not
+// JSON, so this cannot use the get helper. It returns the bytes and the
+// response content type.
+func (c *Client) CoverArt(id string, size int) ([]byte, string, error) {
+	extra := url.Values{}
+	extra.Set("id", id)
+	if size > 0 {
+		extra.Set("size", fmt.Sprintf("%d", size))
+	}
+	u, err := c.requestURL("getCoverArt", extra)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := c.http.Get(u)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	if resp.StatusCode != 200 {
+		return nil, "", fmt.Errorf("getCoverArt: status %d", resp.StatusCode)
+	}
+	// A Subsonic error comes back as JSON with a subsonic-response wrapper.
+	// A real image never starts with '{', so a JSON body signals an error.
+	ct := resp.Header.Get("Content-Type")
+	if len(data) > 0 && data[0] == '{' {
+		return nil, "", fmt.Errorf("getCoverArt: server returned no image")
+	}
+	return data, ct, nil
+}

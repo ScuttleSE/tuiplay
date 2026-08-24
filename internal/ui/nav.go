@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
 )
@@ -27,6 +28,7 @@ const (
 	navSmartField
 	navSmartOp
 	navLyrics
+	navCover
 )
 
 // entrypoint IDs on the root level.
@@ -79,6 +81,14 @@ type navLevel struct {
 	lyricsSynced  bool
 	lyricsSong    string
 	lyricsMissing bool
+
+	// coverImg holds the decoded cover art for a navCover level. coverSong
+	// is the ID of the song the art belongs to, so a follow-up refresh does
+	// not start a second download for the same song. coverMissing is true
+	// when the song has no cover art.
+	coverImg     image.Image
+	coverSong    string
+	coverMissing bool
 }
 
 // lyricLine is one lyric line in a navLyrics level. atMs is the offset in
@@ -116,7 +126,7 @@ func rootLevel() navLevel {
 // the bottom of its stack, and the 2, 3, and 4 keys switch views instead.
 func (l navLevel) hasBackRow() bool {
 	switch l.kind {
-	case navRoot, navSearch, navLyrics:
+	case navRoot, navSearch, navLyrics, navCover:
 		return false
 	}
 	return true
@@ -289,6 +299,19 @@ func lyricsPlaceholderLevel() navLevel {
 // does not start a second lookup for the same song.
 func lyricsLoadingLevel(songID string) navLevel {
 	return navLevel{kind: navLyrics, title: "Lyrics", loading: true, cursor: -1, lyricsSong: songID}
+}
+
+// coverPlaceholderLevel builds the empty cover view. It shows before any
+// song has loaded art, and whenever nothing is playing.
+func coverPlaceholderLevel() navLevel {
+	return navLevel{kind: navCover, title: "Cover", cursor: -1, coverMissing: true}
+}
+
+// coverLoadingLevel returns a placeholder level that marks an in-flight
+// cover-art download for a song. It records the song ID so a follow-up
+// refresh does not start a second download for the same song.
+func coverLoadingLevel(songID string) navLevel {
+	return navLevel{kind: navCover, title: "Cover", loading: true, cursor: -1, coverSong: songID}
 }
 
 // lyricsQualityMark returns a glyph prefix that shows the quality of the

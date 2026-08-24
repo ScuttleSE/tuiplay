@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,6 +40,7 @@ const (
 	viewBrowse viewKind = iota
 	viewSearch
 	viewLyrics
+	viewCover
 )
 
 // model holds the whole interface state.
@@ -71,6 +73,12 @@ type model struct {
 	browseNav  []navLevel
 	searchNav  []navLevel
 	lyricsNav  []navLevel
+
+	// coverNav holds the cover-art view for the currently playing song.
+	// coverMode selects the render technique; Tab or Space cycles it while
+	// the cover view is focused.
+	coverNav  []navLevel
+	coverMode coverMode
 
 	// consume removes the playing song from the queue when playback
 	// leaves it. repeat wraps the queue at the end. They are exclusive.
@@ -162,16 +170,31 @@ type model struct {
 
 	// showVis shows the fullscreen visualizer. visMode picks the mode.
 	// visFrame forces a redraw on each animation tick. visPeaks holds the
-	// decaying spectrum peak caps. visWave holds the decaying waveform
-	// envelope for its slow falloff. visPhase drifts the rainbow hue.
-	// visLorenz holds the Lorenz attractor trajectory.
-	showVis   bool
-	visMode   visMode
-	visFrame  int
-	visPeaks  []int
-	visWave   []float64
-	visPhase  float64
-	visLorenz lorenzState
+	// falling spectrum peak caps and visPeakVel their fall velocity for
+	// gravity. visLevels smooths the spectrum between frames. visWave holds
+	// the decaying waveform envelope. visPhase drifts the palette hue.
+	// visEnergyBase tracks a smoothed loudness baseline and visBeat flags a
+	// beat frame. visParticles holds the beat-spark state.
+	showVis       bool
+	visMode       visMode
+	visFrame      int
+	visPeaks      []int
+	visPeakVel    []float64
+	visLevels     []float64
+	visWave       []float64
+	visPhase      float64
+	visEnergyBase float64
+	visBeat       bool
+	visParticles  particleState
+	// visRadialLevels holds the smoothed radial-bloom band levels, so the
+	// bloom falls off gradually instead of snapping down each frame.
+	visRadialLevels []float64
+	// visStereoL and visStereoR hold the smoothed stereo spectrum band
+	// levels per channel, so the mirrored bars glide instead of flickering.
+	visStereoL []float64
+	visStereoR []float64
+	// visSpark holds the resolved beat-spark tunables from the config.
+	visSpark VisualizerSettings
 
 	// queue data
 	queue       []subsonic.Song
@@ -228,6 +251,7 @@ func newModel(cl *subsonic.Client, pl *player.Player, state UIState, set Setting
 		browseNav:      []navLevel{rootLevel()},
 		searchNav:      []navLevel{searchLevel()},
 		lyricsNav:      []navLevel{lyricsPlaceholderLevel()},
+		coverNav:       []navLevel{coverPlaceholderLevel()},
 		queueIndex:     -1,
 		keyAction:      keyAction,
 		seekSec:        seek,
@@ -238,6 +262,7 @@ func newModel(cl *subsonic.Client, pl *player.Player, state UIState, set Setting
 		queueSupported: queueSupported,
 		xfShared:       &crossfadeShared{pending: -1},
 		status:         "Welcome to tuiplay.",
+		visSpark:       set.Visualizer,
 	}
 }
 
@@ -289,6 +314,8 @@ func (m *model) activeStack() *[]navLevel {
 		return &m.searchNav
 	case viewLyrics:
 		return &m.lyricsNav
+	case viewCover:
+		return &m.coverNav
 	default:
 		return &m.browseNav
 	}
@@ -319,6 +346,8 @@ func (m model) topLevel() navLevel {
 		return m.searchNav[len(m.searchNav)-1]
 	case viewLyrics:
 		return m.lyricsNav[len(m.lyricsNav)-1]
+	case viewCover:
+		return m.coverNav[len(m.coverNav)-1]
 	default:
 		return m.browseNav[len(m.browseNav)-1]
 	}
@@ -425,6 +454,16 @@ type lyricsMsg struct {
 	missing bool
 }
 
+// coverMsg carries a decoded cover-art image for the cover view. song is
+// the ID of the song the art belongs to. missing is true when the song has
+// no cover art or the download or decode failed.
+type coverMsg struct {
+	song    string
+	title   string
+	img     image.Image
+	missing bool
+}
+
 // ratedMsg reports the result of a set-rating command. rating is the new
 // rating (0 to 5). It carries the song ID so the model updates the right
 // entries.
@@ -489,8 +528,10 @@ func spinTick() tea.Cmd {
 	})
 }
 
-// visInterval is the frame period of the visualizer.
-const visInterval = 50 * time.Millisecond
+// visInterval is the frame period of the visualizer. About 30 frames per
+// second gives smooth motion. The per-frame cost is one 1024-point FFT plus
+// cheap cell rendering, so the CPU cost stays low.
+const visInterval = 33 * time.Millisecond
 
 // visTick drives the visualizer animation while it is open.
 func visTick() tea.Cmd {
@@ -797,6 +838,32 @@ func (m model) loadLyrics(s subsonic.Song) tea.Cmd {
 			lines = append(lines, lyricLine{atMs: ms, text: ln.Text})
 		}
 		return lyricsMsg{song: s.ID, title: s.Title, lines: lines, synced: res.Synced}
+	}
+}
+
+// coverArtSize is the pixel size requested from the server for cover art.
+// It is large enough for a full-pane render and small enough to download
+// fast.
+const coverArtSize = 600
+
+// loadCover downloads and decodes the cover art for one song. It returns a
+// coverMsg. A song with no cover-art ID, a download error, or a decode
+// error yields a missing result.
+func (m model) loadCover(s subsonic.Song) tea.Cmd {
+	cl := m.client
+	return func() tea.Msg {
+		if s.CoverArt == "" {
+			return coverMsg{song: s.ID, title: s.Title, missing: true}
+		}
+		data, _, err := cl.CoverArt(s.CoverArt, coverArtSize)
+		if err != nil {
+			return coverMsg{song: s.ID, title: s.Title, missing: true}
+		}
+		img, err := decodeCover(data)
+		if err != nil {
+			return coverMsg{song: s.ID, title: s.Title, missing: true}
+		}
+		return coverMsg{song: s.ID, title: s.Title, img: img}
 	}
 }
 

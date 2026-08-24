@@ -105,6 +105,59 @@ radio_queue_size = 10
 # album = "#89b4fa"
 # progress = "#f38ba8"
 
+# Optional: tune the beat-spark visualizer mode (the "5" key, "beat sparks").
+# Every key is optional; an unset key uses the default shown.
+# [visualizer]
+# How many animation frames a spark lives. Higher = sparks fly farther and
+# linger longer. Default 45.
+# spark_life = 45
+# Scales the launch speed. 1.0 reaches the window edge over a spark's life.
+# Higher throws sparks out faster and farther. Default 1.0.
+# spark_speed = 1.0
+# Downward pull in sub-cells per frame^2. Default 0.045. Set a negative
+# value to disable gravity, so sparks fly straight out as streaks.
+# spark_gravity = 0.045
+# Scales how many sparks a beat spawns. Higher fills the screen more.
+# Default 1.0.
+# spark_count = 1.0
+# The number of trailing positions drawn behind each spark, as a fading
+# streak. 0 (default) draws points; a value like 6 gives comet streaks.
+# spark_trail = 0
+# The radial bloom (the "radial bloom" mode) falloff. This is the fraction
+# of the previous frame's bloom kept when the audio quiets: higher falls
+# slower and smoother, 0 falls off instantly. Default 0.90.
+# radial_decay = 0.90
+# Scales how far the bloom rays reach from the center. Higher fills more of
+# the window. Default 1.0.
+# radial_reach = 1.0
+# Scales the pulsing inner core radius of the bloom. Default 1.0.
+# radial_core = 1.0
+# Shared across all modes:
+# Scales how fast the palette hue drifts over time. 0 freezes it. Default 1.0.
+# hue_speed = 1.0
+# Scales how easily a beat triggers (the beat flash and the spark bursts).
+# Higher flashes more readily. Default 1.0.
+# beat_sensitivity = 1.0
+# Spectrum mode:
+# Bar falloff: the fraction of the previous frame kept as a bar falls.
+# Higher glides more; 0 is instant. Default 0.80.
+# spectrum_smoothing = 0.80
+# Peak-cap fall acceleration in eighths per frame^2. Higher drops faster.
+# Default 0.9.
+# spectrum_peak_gravity = 0.9
+# Lifts the higher-frequency bars so bass does not swamp a narrow window.
+# 0 disables the tilt. Default 0.12.
+# spectrum_tilt = 0.12
+# Neighbor-bleed (monstercat) strength that smooths single-column spikes.
+# Higher spreads less; a value of 1 or below disables it. Default 2.8.
+# spectrum_monstercat = 2.8
+# Waveform mode:
+# Envelope falloff: the fraction kept as the waveform falls. Default 0.90.
+# wave_falloff = 0.90
+# Stereo spectrum mode:
+# Bar falloff for the mirrored stereo bars. Default 0.80.
+# stereo_smoothing = 0.80
+
 # Interface state. tuiplay updates this section on exit.
 [ui]
 # The last right-pane state: "nav" (navigation panel shown) or "hidden".
@@ -120,6 +173,7 @@ split_ratio = 0.6
 # show_nav = "2"
 # show_search = "3"
 # show_lyrics = "4"
+# show_cover = "6"
 # focus_toggle = "tab"
 # up = "k"
 # down = "j"
@@ -226,11 +280,191 @@ type Config struct {
 	// role name and each value is a "#rrggbb" hex color.
 	ThemeColors map[string]string `toml:"theme_colors"`
 
+	// Visualizer holds the tunables for the beat-spark visualizer mode.
+	Visualizer VisualizerConfig `toml:"visualizer"`
+
 	// UI holds the interface state that persists across runs.
 	UI UIState `toml:"ui"`
 
 	// Keys maps an action name to a key. An unset action uses its default.
 	Keys map[string]string `toml:"keys"`
+}
+
+// VisualizerConfig holds the tunables for the beat-spark visualizer mode.
+// A zero value for a numeric field means "use the built-in default". The
+// pointer fields distinguish an unset key from a deliberate zero.
+type VisualizerConfig struct {
+	// SparkLife is how many animation frames a spark lives. A longer life
+	// lets a spark fly farther and lingers on screen. Default 45.
+	SparkLife int `toml:"spark_life"`
+
+	// SparkSpeed scales the launch speed of a spark. 1.0 is the default
+	// speed that reaches the window edge over the spark's life. A larger
+	// value throws sparks out faster and farther.
+	SparkSpeed float64 `toml:"spark_speed"`
+
+	// SparkGravity is the downward pull on a spark in sub-cells per frame
+	// squared. A value of 0 or an unset key means the default 0.045. To
+	// disable gravity (straight streaks), set a negative value, which the
+	// visualizer clamps to zero pull. Default 0.045.
+	SparkGravity float64 `toml:"spark_gravity"`
+
+	// SparkCount scales how many sparks a beat spawns. 1.0 is the default.
+	// A larger value fills the screen more densely.
+	SparkCount float64 `toml:"spark_count"`
+
+	// SparkTrail is the number of past positions drawn behind each spark as
+	// a fading streak. 0 (the default) draws points with no streak; a value
+	// like 6 gives comet-like streaks.
+	SparkTrail int `toml:"spark_trail"`
+
+	// RadialDecay controls how fast the radial bloom falls off when the
+	// audio quiets. It is the per-frame retained fraction of the previous
+	// frame's band levels: a rising level snaps up instantly, a falling
+	// level decays by this factor. A value near 1 falls slowly; 0 means no
+	// smoothing (instant falloff). Default 0.90.
+	RadialDecay float64 `toml:"radial_decay"`
+
+	// RadialReach scales how far the bloom rays extend from the center for a
+	// given band level. 1.0 is the default. A larger value makes the bloom
+	// fill more of the window.
+	RadialReach float64 `toml:"radial_reach"`
+
+	// RadialCore scales the pulsing inner core radius. 1.0 is the default.
+	RadialCore float64 `toml:"radial_core"`
+
+	// HueSpeed scales how fast the palette hue drifts over time, across all
+	// modes. 1.0 is the default. 0 freezes the hue.
+	HueSpeed float64 `toml:"hue_speed"`
+
+	// BeatSensitivity scales how easily a beat triggers, affecting the
+	// beat-flash on every mode and the beat-spark bursts. 1.0 is the
+	// default; a larger value flags beats more readily.
+	BeatSensitivity float64 `toml:"beat_sensitivity"`
+
+	// SpectrumSmoothing is the per-frame retained fraction of the spectrum
+	// bar levels when they fall. Higher falls slower and glides more.
+	// Default 0.80. 0 means no smoothing.
+	SpectrumSmoothing float64 `toml:"spectrum_smoothing"`
+
+	// SpectrumPeakGravity is the downward acceleration of the falling peak
+	// caps in eighths per frame squared. Higher drops the caps faster.
+	// Default 0.9.
+	SpectrumPeakGravity float64 `toml:"spectrum_peak_gravity"`
+
+	// SpectrumTilt lifts the higher frequency bars so bass does not swamp a
+	// narrow window. It is the extra level added to the top band. Default
+	// 0.12. 0 disables the tilt. A negative value clamps to 0.
+	SpectrumTilt float64 `toml:"spectrum_tilt"`
+
+	// SpectrumMonstercat controls how strongly a bar bleeds into its
+	// neighbors, smoothing single-column spikes. Higher spreads less.
+	// Default 2.8. A value of 1 or below disables the filter.
+	SpectrumMonstercat float64 `toml:"spectrum_monstercat"`
+
+	// WaveFalloff is the per-frame retained fraction of the waveform
+	// envelope. Higher falls slower. Default 0.90.
+	WaveFalloff float64 `toml:"wave_falloff"`
+
+	// StereoSmoothing is the per-frame retained fraction of the stereo
+	// spectrum band levels when they fall. Higher glides more. Default
+	// 0.80. 0 means no smoothing.
+	StereoSmoothing float64 `toml:"stereo_smoothing"`
+}
+
+// Visualizer default values.
+const (
+	defaultSparkLife           = 45
+	defaultSparkSpeed          = 1.0
+	defaultSparkGravity        = 0.045
+	defaultSparkCount          = 1.0
+	defaultSparkTrail          = 0
+	defaultRadialDecay         = 0.90
+	defaultRadialReach         = 1.0
+	defaultRadialCore          = 1.0
+	defaultHueSpeed            = 1.0
+	defaultBeatSensitivity     = 1.0
+	defaultSpectrumSmoothing   = 0.80
+	defaultSpectrumPeakGravity = 0.9
+	defaultSpectrumTilt        = 0.12
+	defaultSpectrumMonstercat  = 2.8
+	defaultWaveFalloff         = 0.90
+	defaultStereoSmoothing     = 0.80
+)
+
+// Resolved returns the visualizer config with every unset (zero) field
+// replaced by its built-in default. SparkTrail keeps its zero value, since
+// zero is a meaningful setting (no streak). A negative SparkGravity is a
+// deliberate "no gravity" request; Resolved clamps it to zero.
+func (v VisualizerConfig) Resolved() VisualizerConfig {
+	r := v
+	if r.SparkLife <= 0 {
+		r.SparkLife = defaultSparkLife
+	}
+	if r.SparkSpeed <= 0 {
+		r.SparkSpeed = defaultSparkSpeed
+	}
+	switch {
+	case r.SparkGravity == 0:
+		r.SparkGravity = defaultSparkGravity
+	case r.SparkGravity < 0:
+		r.SparkGravity = 0
+	}
+	if r.SparkCount <= 0 {
+		r.SparkCount = defaultSparkCount
+	}
+	if r.SparkTrail < 0 {
+		r.SparkTrail = 0
+	}
+	// RadialDecay: an unset (zero) key means the default. A value at or
+	// below zero disables smoothing (instant falloff); values above 1 clamp
+	// to just under 1 to stay stable.
+	r.RadialDecay = resolveFraction(r.RadialDecay, defaultRadialDecay)
+	if r.RadialReach <= 0 {
+		r.RadialReach = defaultRadialReach
+	}
+	if r.RadialCore <= 0 {
+		r.RadialCore = defaultRadialCore
+	}
+	if r.HueSpeed == 0 {
+		r.HueSpeed = defaultHueSpeed
+	} else if r.HueSpeed < 0 {
+		r.HueSpeed = 0
+	}
+	if r.BeatSensitivity <= 0 {
+		r.BeatSensitivity = defaultBeatSensitivity
+	}
+	r.SpectrumSmoothing = resolveFraction(r.SpectrumSmoothing, defaultSpectrumSmoothing)
+	if r.SpectrumPeakGravity <= 0 {
+		r.SpectrumPeakGravity = defaultSpectrumPeakGravity
+	}
+	if r.SpectrumTilt == 0 {
+		r.SpectrumTilt = defaultSpectrumTilt
+	} else if r.SpectrumTilt < 0 {
+		r.SpectrumTilt = 0
+	}
+	if r.SpectrumMonstercat == 0 {
+		r.SpectrumMonstercat = defaultSpectrumMonstercat
+	}
+	r.WaveFalloff = resolveFraction(r.WaveFalloff, defaultWaveFalloff)
+	r.StereoSmoothing = resolveFraction(r.StereoSmoothing, defaultStereoSmoothing)
+	return r
+}
+
+// resolveFraction resolves a 0..1 smoothing fraction. An unset (zero) value
+// means the default. A negative value means 0 (no smoothing). A value at or
+// above 1 clamps to just under 1 to stay stable.
+func resolveFraction(v, def float64) float64 {
+	switch {
+	case v == 0:
+		return def
+	case v < 0:
+		return 0
+	case v >= 1:
+		return 0.999
+	default:
+		return v
+	}
 }
 
 // UIState holds the persisted interface state.

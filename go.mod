@@ -9,6 +9,7 @@ require (
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/mattn/go-runewidth v0.0.28
 	github.com/tphakala/go-m4a v0.3.0
+	golang.org/x/image v0.45.0
 	modernc.org/sqlite v1.57.0
 )
 
@@ -44,7 +45,7 @@ require (
 	github.com/tphakala/simd v1.5.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

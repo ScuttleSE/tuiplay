@@ -38,6 +38,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, c)
 			}
 		}
+		// While the cover view is active, follow the playing song too.
+		if m.activeView == viewCover {
+			if c := m.refreshCoverIfPlaying(); c != nil {
+				cmds = append(cmds, c)
+			}
+		}
 		return m, tea.Batch(cmds...)
 
 	case scanStatusMsg:
@@ -216,6 +222,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lyricsNav = []navLevel{lvl}
 		return m, nil
 
+	case coverMsg:
+		// Drop a stale result: the current song may have changed while the
+		// download ran. Apply only the result for the song that plays now,
+		// or keep whatever loaded when nothing plays.
+		if cur := m.currentSongID(); cur != "" && cur != msg.song {
+			return m, nil
+		}
+		lvl := navLevel{
+			kind:         navCover,
+			title:        "Cover: " + msg.title,
+			cursor:       -1,
+			coverImg:     msg.img,
+			coverSong:    msg.song,
+			coverMissing: msg.missing || msg.img == nil,
+		}
+		m.coverNav = []navLevel{lvl}
+		return m, nil
+
 	case ratedMsg:
 		if msg.err != nil {
 			return m.setTempStatus("Rating error: " + msg.err.Error())
@@ -238,6 +262,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case restoreQueueMsg:
 		if msg.err != nil || !msg.ok || len(msg.queue.Songs) == 0 {
+			return m, nil
+		}
+		// Drop a late restore once the user has taken over. A slow restore
+		// command must not pause or replace a queue the user already
+		// started (for example radio mode), which would silence playback.
+		if m.radio || len(m.queue) > 0 || m.player.State() != player.StateStopped {
 			return m, nil
 		}
 		return m.restoreFromQueue(msg.queue)
@@ -470,6 +500,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// While the cover view is focused, Space cycles the render mode
+	// instead of its normal action, so the modes are easy to compare.
+	// Tab is left alone so it still moves focus back to the queue.
+	if m.activeView == viewCover && m.focus == focusRight && action == config.ActAddAll {
+		m.coverMode = (m.coverMode + 1) % coverModeCount
+		return m, nil
+	}
+
 	switch action {
 	case config.ActQuit:
 		m.player.Stop()
@@ -497,6 +535,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case config.ActShowLyrics:
 		return m.showLyrics()
+	case config.ActShowCover:
+		return m.showCover()
 	case config.ActRateUp:
 		return m.rateUp()
 	case config.ActRateDown:
@@ -562,8 +602,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.ActVisualizer:
 		m.showVis = true
 		m.visPeaks = nil
+		m.visPeakVel = nil
+		m.visLevels = nil
+		m.visRadialLevels = nil
+		m.visStereoL = nil
+		m.visStereoR = nil
 		m.visWave = nil
-		m.visLorenz.reset()
+		m.visParticles = particleState{}
 		return m, visTick()
 
 	case config.ActUp:
@@ -816,6 +861,10 @@ func (m model) showSongInfo() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	// Info levels live on the browse stack. Switch to it so a non-browse
+	// active view (search, lyrics, cover) does not receive the push and
+	// then overwrite it on the next refresh.
+	m.activeView = viewBrowse
 	m.pushLoading("Song info")
 	return m, m.loadSongInfo(s)
 }
@@ -841,6 +890,8 @@ func (m model) showArtistInfo() (tea.Model, tea.Cmd) {
 	if name == "" {
 		return m, nil
 	}
+	// Info levels live on the browse stack (see showSongInfo).
+	m.activeView = viewBrowse
 	m.pushLevel(artistInfoLevel(name))
 	m.focus = focusRight
 	m.rightShown = true
@@ -891,7 +942,46 @@ func (m model) showLyrics() (tea.Model, tea.Cmd) {
 	return m, m.loadLyrics(s)
 }
 
-// refreshLyricsIfPlaying reloads the lyrics view for the current song when
+// showCover switches to the cover-art view for the currently playing song.
+// When nothing plays, it shows an empty placeholder.
+func (m model) showCover() (tea.Model, tea.Cmd) {
+	m.activeView = viewCover
+	m.focus = focusRight
+	m.rightShown = true
+
+	s, ok := m.currentSong()
+	if !ok {
+		m.coverNav = []navLevel{coverPlaceholderLevel()}
+		return m, nil
+	}
+	// Already showing this song's art (loaded or a download in flight)?
+	// Keep it.
+	if top := m.coverNav[len(m.coverNav)-1]; top.coverSong == s.ID {
+		return m, nil
+	}
+	m.coverNav = []navLevel{coverLoadingLevel(s.ID)}
+	return m, m.loadCover(s)
+}
+
+// refreshCoverIfPlaying reloads the cover view for the current song when
+// the view holds a different song. It returns a command to run, or nil.
+// When nothing plays, it resets the view to the empty placeholder.
+func (m *model) refreshCoverIfPlaying() tea.Cmd {
+	if len(m.coverNav) == 0 {
+		return nil
+	}
+	s, ok := m.currentSong()
+	if !ok {
+		m.coverNav = []navLevel{coverPlaceholderLevel()}
+		return nil
+	}
+	top := m.coverNav[len(m.coverNav)-1]
+	if top.coverSong == s.ID {
+		return nil
+	}
+	m.coverNav = []navLevel{coverLoadingLevel(s.ID)}
+	return m.loadCover(s)
+}
 // the lyrics view holds a different song. It returns a command to run, or
 // nil. When nothing plays, it resets the view to the empty placeholder.
 func (m *model) refreshLyricsIfPlaying() tea.Cmd {
@@ -930,6 +1020,21 @@ func (m *model) prefetchLyrics(s subsonic.Song) tea.Cmd {
 	}
 	m.lyricsNav = []navLevel{lyricsLoadingLevel(s.ID)}
 	return m.loadLyrics(s)
+}
+
+// prefetchCover starts a cover-art download for a song that just became the
+// current track, so the art is ready before the user opens the cover view.
+// It runs regardless of the active view. It returns a command, or nil when
+// the art is already loaded or in flight for this song.
+func (m *model) prefetchCover(s subsonic.Song) tea.Cmd {
+	if len(m.coverNav) > 0 {
+		top := m.coverNav[len(m.coverNav)-1]
+		if top.coverSong == s.ID {
+			return nil
+		}
+	}
+	m.coverNav = []navLevel{coverLoadingLevel(s.ID)}
+	return m.loadCover(s)
 }
 
 func (m model) rateUp() (tea.Model, tea.Cmd) {
@@ -1019,8 +1124,9 @@ func (m model) restoreFromQueue(pq subsonic.PlayQueue) (tea.Model, tea.Cmd) {
 	}
 	m.refreshXF()
 	prefetch := m.prefetchLyrics(s)
+	prefetchC := m.prefetchCover(s)
 	tm, statusCmd := m.setTempStatus(fmt.Sprintf("Restored queue (%d songs, paused)", len(m.queue)))
-	return tm, tea.Batch(prefetch, statusCmd)
+	return tm, tea.Batch(prefetch, prefetchC, statusCmd)
 }
 
 // smartPrev restarts the current song, or goes to the previous song when
@@ -1626,7 +1732,8 @@ func (m model) playCurrent() (tea.Model, tea.Cmd) {
 	go m.client.Scrobble(s.ID, false)
 	m.refreshXF()
 	cmd := m.prefetchLyrics(s)
-	return m, cmd
+	coverCmd := m.prefetchCover(s)
+	return m, tea.Batch(cmd, coverCmd)
 }
 
 // advance moves to the next track. ended is true when the current track
@@ -1661,7 +1768,8 @@ func (m model) advance(ended bool) (tea.Model, tea.Cmd) {
 			go m.client.Scrobble(s.ID, false)
 			m.refreshXF()
 			cmd := m.prefetchLyrics(s)
-			return m, cmd
+			coverCmd := m.prefetchCover(s)
+			return m, tea.Batch(cmd, coverCmd)
 		}
 		// No pre-load happened (end of queue). Fall through to stop.
 	}
