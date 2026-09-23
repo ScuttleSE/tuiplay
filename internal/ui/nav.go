@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 
+	"git.hemmalab.se/scuttle/tuiplay/internal/lyrics"
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
 )
 
@@ -28,6 +29,7 @@ const (
 	navSmartField
 	navSmartOp
 	navLyrics
+	navLyricsSearch
 	navCover
 )
 
@@ -76,11 +78,19 @@ type navLevel struct {
 	// lyrics holds the lyric lines for a navLyrics level. lyricsSynced
 	// is true when the lines carry timestamps. lyricsSong is the ID of the
 	// song the lyrics belong to, so the view highlights the active line
-	// only while that song plays.
+	// only while that song plays. lyricsManual marks lines the user picked
+	// from a search hit instead of the automatic lookup, so the follow
+	// refresh leaves the view alone.
 	lyrics        []lyricLine
 	lyricsSynced  bool
 	lyricsSong    string
 	lyricsMissing bool
+	lyricsManual  bool
+
+	// lyricsHits holds the freetext search hits of a navLyricsSearch
+	// level, aligned with rows. lyricsQuery is the query that found them.
+	lyricsHits  []lyrics.Hit
+	lyricsQuery string
 
 	// coverImg holds the decoded cover art for a navCover level. coverSong
 	// is the ID of the song the art belongs to, so a follow-up refresh does
@@ -326,4 +336,26 @@ func lyricsQualityMark(synced, missing bool) string {
 		return "♬ "
 	}
 	return "♪ "
+}
+
+// lyricsSearchLevel builds the freetext lyrics search results level. Each
+// row aligns with one hit, so the picker indexes lyricsHits by the cursor.
+func lyricsSearchLevel(query string, hits []lyrics.Hit) navLevel {
+	rows := make([]navRow, 0, len(hits))
+	for _, h := range hits {
+		label := h.Artist + " - " + h.Title
+		if h.Album != "" {
+			label += " (" + h.Album + ")"
+		}
+		label = lyricsQualityMark(h.Synced, false) + label
+		rows = append(rows, navRow{label: label, name: h.Title})
+	}
+	return navLevel{
+		kind:        navLyricsSearch,
+		title:       "Lyrics search: " + query,
+		rows:        rows,
+		cursor:      0,
+		lyricsHits:  hits,
+		lyricsQuery: query,
+	}
 }

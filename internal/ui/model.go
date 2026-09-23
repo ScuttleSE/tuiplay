@@ -110,6 +110,16 @@ type model struct {
 	// crossfade.
 	xfShared *crossfadeShared
 
+	// playGate serializes asynchronous play requests. Each request takes
+	// a generation, and a stop or a newer request invalidates the older
+	// ones, so two loads cannot interleave inside the player.
+	playGate *playGate
+
+	// loadingPlay is true while an asynchronous play request loads a
+	// track. The status bar keeps the loading status until the result
+	// arrives.
+	loadingPlay bool
+
 	// seekSec is the seek step in seconds.
 	seekSec int
 
@@ -133,6 +143,12 @@ type model struct {
 	// dump, and the network providers, in that order. It is never nil; call
 	// its Usable method to test whether any tier can produce lyrics.
 	lyricsSrc *lyrics.Source
+
+	// lyricsOffset shifts the lyric timing of the playing song. The view
+	// adds it to each line timestamp: a negative value shows the lines
+	// earlier, a positive one later. It loads per song with the lyrics and
+	// persists per song through the lyrics cache.
+	lyricsOffset time.Duration
 
 	// queueSupported is true when the server advertises the
 	// indexBasedQueue OpenSubsonic extension. tuiplay then saves and
@@ -261,6 +277,7 @@ func newModel(cl *subsonic.Client, pl *player.Player, state UIState, set Setting
 		lyricsSrc:      lyricsSrc,
 		queueSupported: queueSupported,
 		xfShared:       &crossfadeShared{pending: -1},
+		playGate:       &playGate{},
 		status:         "Welcome to tuiplay.",
 		visSpark:       set.Visualizer,
 	}
@@ -291,6 +308,7 @@ const (
 	promptSmartValue
 	promptSmartLimit
 	promptRadio
+	promptLyricsSearch
 )
 
 // uiState returns the interface state to persist.
@@ -446,12 +464,22 @@ type songInfoMsg struct {
 
 // lyricsMsg carries loaded lyric lines for the lyrics view. song is the ID
 // of the song the lyrics belong to. missing is true when no lyrics matched.
+// offset is the song's stored timing offset.
 type lyricsMsg struct {
 	song    string
 	title   string
 	lines   []lyricLine
 	synced  bool
 	missing bool
+	offset  time.Duration
+}
+
+// lyricsSearchMsg carries the hits of a freetext lyrics search. A non-nil
+// err with hits means one tier failed but others answered.
+type lyricsSearchMsg struct {
+	query string
+	hits  []lyrics.Hit
+	err   error
 }
 
 // coverMsg carries a decoded cover-art image for the cover view. song is
@@ -821,23 +849,56 @@ func (m model) restoreQueue() tea.Cmd {
 }
 
 // loadLyrics looks up the lyrics for one song through the tiered source:
-// the cache, the lrclib dump, then the network providers.
+// the cache, the lrclib dump, then the network providers. It also loads
+// the song's stored timing offset.
 func (m model) loadLyrics(s subsonic.Song) tea.Cmd {
 	src := m.lyricsSrc
 	return func() tea.Msg {
 		res, ok := src.Lookup(s.Artist, s.Title, s.Album, s.Duration)
+		off := src.GetOffset(s.Artist, s.Title, s.Album, s.Duration)
 		if !ok {
-			return lyricsMsg{song: s.ID, title: s.Title, missing: true}
+			return lyricsMsg{song: s.ID, title: s.Title, missing: true, offset: off}
 		}
-		lines := make([]lyricLine, 0, len(res.Lines))
-		for _, ln := range res.Lines {
-			ms := int64(-1)
-			if ln.HasTime() {
-				ms = ln.At.Milliseconds()
-			}
-			lines = append(lines, lyricLine{atMs: ms, text: ln.Text})
+		return lyricsMsg{song: s.ID, title: s.Title, lines: lyricLinesFrom(res), synced: res.Synced, offset: off}
+	}
+}
+
+// lyricLinesFrom converts a lyrics result into the view's line model.
+func lyricLinesFrom(res lyrics.Result) []lyricLine {
+	lines := make([]lyricLine, 0, len(res.Lines))
+	for _, ln := range res.Lines {
+		ms := int64(-1)
+		if ln.HasTime() {
+			ms = ln.At.Milliseconds()
 		}
-		return lyricsMsg{song: s.ID, title: s.Title, lines: lines, synced: res.Synced}
+		lines = append(lines, lyricLine{atMs: ms, text: ln.Text})
+	}
+	return lines
+}
+
+// lyricsSearchLimit caps the hits one freetext lyrics search shows.
+const lyricsSearchLimit = 30
+
+// saveLyricsOffset persists the timing offset of one song through the
+// lyrics source. The write is a small sidecar file; the offset survives
+// restarts. It writes nothing when the cache is off.
+func (m model) saveLyricsOffset(s subsonic.Song) tea.Cmd {
+	src := m.lyricsSrc
+	off := m.lyricsOffset
+	return func() tea.Msg {
+		src.PutOffset(s.Artist, s.Title, s.Album, s.Duration, off)
+		return nil
+	}
+}
+
+// searchLyricsCmd runs a freetext lyrics search over the dump and the
+// searchable network providers. It runs in a command so Update does not
+// block on the network or the dump.
+func (m model) searchLyricsCmd(query string) tea.Cmd {
+	src := m.lyricsSrc
+	return func() tea.Msg {
+		hits, err := src.Search(query, lyricsSearchLimit)
+		return lyricsSearchMsg{query: query, hits: hits, err: err}
 	}
 }
 

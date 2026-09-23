@@ -3,6 +3,8 @@ package lyrics
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 // Source looks up lyrics through a tiered chain. It checks the local cache
@@ -40,6 +42,89 @@ func (s *Source) Usable() bool {
 		return true
 	}
 	return len(s.net) > 0
+}
+
+// Searcher is implemented by a Fetcher that can also answer a freetext
+// query. A provider without the method stays out of the search tier.
+type Searcher interface {
+	Fetcher
+	// Search answers a freetext query with at most limit hits.
+	Search(query string, limit int) ([]Hit, error)
+}
+
+// Search runs a freetext query against the dump and every provider that
+// implements Searcher, in tier order. It dedupes hits by artist and title.
+// The error is non-nil when a tier failed; hits from the tiers that
+// succeeded still return, so a slow dump or a rate-limited provider does
+// not hide the rest. No cache entry is written.
+func (s *Source) Search(query string, limit int) ([]Hit, error) {
+	if s == nil {
+		return nil, nil
+	}
+	var out []Hit
+	seen := map[string]bool{}
+	add := func(hits []Hit) {
+		for _, h := range hits {
+			key := strings.ToLower(h.Artist) + "\x00" + strings.ToLower(h.Title)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, h)
+		}
+	}
+	var firstErr error
+	if s.dump != nil {
+		hits, err := s.dump.Search(query, limit)
+		if err != nil {
+			firstErr = err
+		} else {
+			add(hits)
+		}
+	}
+	if len(out) < limit {
+		for _, f := range s.net {
+			sr, ok := f.(Searcher)
+			if !ok {
+				continue
+			}
+			hits, err := sr.Search(query, limit-len(out))
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			add(hits)
+		}
+	}
+	return out, firstErr
+}
+
+// Put stores a found result in the cache tier for one song identity. The
+// interface uses it to save user-picked lyrics for the playing song. It
+// writes nothing else: no miss entry, no lookup through the lower tiers.
+func (s *Source) Put(artist, title, album string, durationSec int, res Result) {
+	if s == nil {
+		return
+	}
+	s.cache.Put(artist, title, album, durationSec, res)
+}
+
+// GetOffset returns the stored timing offset for one song. See Cache.GetOffset.
+func (s *Source) GetOffset(artist, title, album string, durationSec int) time.Duration {
+	if s == nil {
+		return 0
+	}
+	return s.cache.GetOffset(artist, title, album, durationSec)
+}
+
+// PutOffset stores the timing offset for one song. See Cache.PutOffset.
+func (s *Source) PutOffset(artist, title, album string, durationSec int, off time.Duration) {
+	if s == nil {
+		return
+	}
+	s.cache.PutOffset(artist, title, album, durationSec, off)
 }
 
 // Lookup finds the lyrics for one song through the tiered chain. The bool is

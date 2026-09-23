@@ -13,6 +13,9 @@ const (
 	ActShowSearch    = "show_search"
 	ActShowLyrics    = "show_lyrics"
 	ActShowCover     = "show_cover"
+	ActLyricsSearch  = "lyrics_search"
+	ActLyricsEarlier = "lyrics_earlier"
+	ActLyricsLater   = "lyrics_later"
 	ActFocusToggle   = "focus_toggle"
 	ActUp            = "up"
 	ActDown          = "down"
@@ -60,6 +63,9 @@ func DefaultKeys() map[string]string {
 		ActShowSearch:    "3",
 		ActShowLyrics:    "4",
 		ActShowCover:     "6",
+		ActLyricsSearch:  "/",
+		ActLyricsEarlier: ",",
+		ActLyricsLater:   ".",
 		ActFocusToggle:   "tab",
 		ActUp:            "k",
 		ActDown:          "j",

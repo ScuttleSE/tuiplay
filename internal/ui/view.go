@@ -50,6 +50,7 @@ func (m model) overlayHelp(screen string) string {
 		"1 hide panel     2 navigation",
 		"3 search         4 lyrics",
 		"5 visualizer     6 cover art",
+		"/ search lyrics  , . lyric timing",
 		"Tab switch pane",
 		"§ rate up        ½ rate down",
 		"Enter select/drill",
@@ -284,6 +285,9 @@ func (m model) renderNavPane(width, height int) string {
 	if lvl.kind == navCover {
 		title += "  [" + coverModeName(m.coverMode) + "]  Space switch"
 	}
+	if lvl.kind == navLyrics && lvl.lyricsSynced && m.lyricsOffset != 0 {
+		title += fmt.Sprintf("  [%+.1fs]", m.lyricsOffset.Seconds())
+	}
 	header := style.Render(trim(title, width))
 	rule := m.styles.rule.Render(strings.Repeat("─", width))
 
@@ -329,6 +333,21 @@ func (m model) renderNavPane(width, height int) string {
 	return header + "\n" + rule + "\n" + strings.Join(rows, "\n")
 }
 
+// activeLyricIndex returns the index of the active lyric line for an
+// elapsed time, or -1 when no line is active. The offset shifts the line
+// timestamps: a negative offset makes lines active earlier, a positive
+// one later. Untimed lines never match.
+func activeLyricIndex(lines []lyricLine, elapsedMs int64, offset time.Duration) int {
+	active := -1
+	off := offset.Milliseconds()
+	for i, ln := range lines {
+		if ln.atMs >= 0 && ln.atMs+off <= elapsedMs {
+			active = i
+		}
+	}
+	return active
+}
+
 // lyricsRows draws the lyric lines. It returns the rendered rows and the
 // index of the active line, or -1 when no line is active. For synced
 // lyrics of the currently playing song, the active line is the last line
@@ -336,7 +355,7 @@ func (m model) renderNavPane(width, height int) string {
 func (m model) lyricsRows(lvl navLevel, width int) ([]string, int) {
 	if lvl.lyricsMissing || len(lvl.lyrics) == 0 {
 		msg := "No lyrics found."
-		if lvl.lyricsSong == "" {
+		if lvl.lyricsSong == "" && !lvl.lyricsManual {
 			// The empty placeholder: nothing is playing.
 			msg = "No song playing."
 		}
@@ -345,12 +364,7 @@ func (m model) lyricsRows(lvl navLevel, width int) ([]string, int) {
 
 	active := -1
 	if lvl.lyricsSynced && m.currentSongID() == lvl.lyricsSong && m.player.State() != player.StateStopped {
-		ms := m.elapsed.Milliseconds()
-		for i, ln := range lvl.lyrics {
-			if ln.atMs >= 0 && ln.atMs <= ms {
-				active = i
-			}
-		}
+		active = activeLyricIndex(lvl.lyrics, m.elapsed.Milliseconds(), m.lyricsOffset)
 	}
 
 	out := make([]string, 0, len(lvl.lyrics))
@@ -560,7 +574,10 @@ func (m model) renderStatus() string {
 
 	var left string
 	// A temporary status message overrides the Playing line for a while.
+	// A loading status stays until the play result replaces it.
 	if time.Now().Before(m.statusExpiry) {
+		left = m.status
+	} else if m.loadingPlay {
 		left = m.status
 	} else {
 		switch m.player.State() {

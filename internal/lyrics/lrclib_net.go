@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -34,8 +35,14 @@ func NewLrclibNetClient(userAgent string) *LrclibNetClient {
 // Name returns the provider name.
 func (c *LrclibNetClient) Name() string { return "lrclib" }
 
-// lrclibResult is one lyrics record from the lrclib.net API.
+// lrclibResult is one lyrics record from the lrclib.net API. The get and
+// the search endpoints return the same shape; the name fields stay empty
+// on a get response.
 type lrclibResult struct {
+	ArtistName   string `json:"artistName"`
+	TrackName    string `json:"trackName"`
+	AlbumName    string `json:"albumName"`
+	Duration     int    `json:"duration"`
 	SyncedLyrics string `json:"syncedLyrics"`
 	PlainLyrics  string `json:"plainLyrics"`
 }
@@ -88,6 +95,43 @@ func (c *LrclibNetClient) Fetch(artist, title, album string, durationSec int) (R
 		}
 	}
 	return Result{}, false, nil
+}
+
+// Search answers a freetext query with the lrclib.net search endpoint. It
+// returns at most limit hits, each carrying its lyrics.
+func (c *LrclibNetClient) Search(query string, limit int) ([]Hit, error) {
+	if strings.TrimSpace(query) == "" || limit < 1 {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("q", query)
+	var list []lrclibResult
+	status, err := c.getJSON(c.base+"/api/search?"+q.Encode(), &list)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("lrclib search: status %d", status)
+	}
+	out := make([]Hit, 0, len(list))
+	for _, r := range list {
+		res, ok := resultFromLyrics(r.SyncedLyrics, r.PlainLyrics)
+		if !ok {
+			continue
+		}
+		out = append(out, Hit{
+			Artist:      r.ArtistName,
+			Title:       r.TrackName,
+			Album:       r.AlbumName,
+			DurationSec: r.Duration,
+			Synced:      res.Synced,
+			Lyrics:      res,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 // getJSON performs a GET request and decodes a JSON body into v when the

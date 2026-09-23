@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -109,6 +110,44 @@ func (c *Cache) PutMiss(artist, title, album string, durationSec int) {
 	_ = os.WriteFile(path, nil, 0600)
 	now := time.Now()
 	_ = os.Chtimes(path, now, now)
+}
+
+// GetOffset returns the stored timing offset for one song. It is the
+// duration added to each lyric timestamp before the view picks the active
+// line: a negative value makes the lines show earlier, a positive one
+// later. A song with no stored offset returns zero. The offset is a no-op
+// when the cache is off.
+func (c *Cache) GetOffset(artist, title, album string, durationSec int) time.Duration {
+	if c == nil || c.dir == "" {
+		return 0
+	}
+	data, err := os.ReadFile(filepath.Join(c.dir, c.key(artist, title, album, durationSec)+".offset"))
+	if err != nil {
+		return 0
+	}
+	sec, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
+	if err != nil {
+		return 0
+	}
+	return time.Duration(sec * float64(time.Second))
+}
+
+// PutOffset stores the timing offset for one song in a "<key>.offset"
+// sidecar file next to the lyrics. A zero offset removes the file. The
+// offset persists per song, keyed like the lyrics cache.
+func (c *Cache) PutOffset(artist, title, album string, durationSec int, off time.Duration) {
+	if c == nil || c.dir == "" {
+		return
+	}
+	if err := os.MkdirAll(c.dir, 0700); err != nil {
+		return
+	}
+	path := filepath.Join(c.dir, c.key(artist, title, album, durationSec)+".offset")
+	if off == 0 {
+		os.Remove(path)
+		return
+	}
+	_ = os.WriteFile(path, []byte(strconv.FormatFloat(off.Seconds(), 'f', -1, 64)), 0600)
 }
 
 // formatText renders a result to the text stored in a ".lrc" file. Synced

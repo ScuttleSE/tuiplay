@@ -209,6 +209,18 @@ and the view scrolls to follow playback. The page title carries a note
 glyph: `♬` for synced, per-line timed lyrics and `♪` for plain, untimed
 lyrics. The view follows the song as it changes.
 
+Press `/` while the lyrics view is open to search for lyrics by freetext.
+The query matches the start of a title or artist in the local dump and
+against lrclib.net, so it also finds songs that are not playing. `Enter` on
+a hit shows its lyrics; while a song plays, they are saved to the cache for
+that song, so the automatic lookup finds them from then on. `[..]` returns
+to the playing song's lyrics.
+
+If the synced lyrics run slightly ahead of or behind the music, press `,`
+to shift the lines earlier and `.` to shift them later, in 0.1-second steps
+(up to ±10 s). The offset shows in the page header and is saved per song,
+so it comes back with the song.
+
 ### Cover art
 
 Press `6` to show the album cover of the playing song in the right pane. The
@@ -290,6 +302,8 @@ rebindable in the config; see the `[keys]` section below.
 | `2`            | Show the browse navigation view          |
 | `3`            | Show the search form                     |
 | `4`            | Show the lyrics of the playing song      |
+| `/`            | In the lyrics view: search lyrics by freetext |
+| `,` / `.`      | In the lyrics view: shift synced lyric timing earlier / later |
 | `5`            | Open the fullscreen visualizer           |
 | `6`            | Show the album cover of the playing song |
 | `Tab`          | Move focus between the queue pane and the right pane |

@@ -5,6 +5,71 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.24] - 2026-09-23
+
+This release rolls up every change since the last published release (0.7.20):
+the freetext lyrics search, the per-song lyric timing offset, and two
+interface fixes.
+
+### Added
+- Freetext lyrics search. While the lyrics view is open, `/`
+  (`lyrics_search`) opens a search prompt. The query runs against the local
+  lrclib dump (title/artist prefix match, with extra words as filters) and
+  against the lrclib.net search endpoint; the results merge and dedupe. Each
+  hit carries its lyrics, so picking it needs no second lookup. `Enter` on a
+  hit shows its lyrics; while a song plays they are saved to the lyrics cache
+  under that song's key, so the automatic lookup finds them from then on.
+  `[..]` or `4` returns to the playing song's lyrics.
+- `lyrics_search` key action (default `/`), rebindable in `[keys]`.
+- Lyric timing offset. While the lyrics view shows synced lyrics, `,`
+  (`lyrics_earlier`) shifts the active-line timing 0.1 s earlier and `.`
+  (`lyrics_later`) shifts it 0.1 s later, clamped to ±10 s. The offset
+  shows in the lyrics page title (for example `[+0.3s]`) and persists per
+  song in a `.offset` sidecar file in the lyrics cache directory, so it
+  comes back with the song. A zero offset removes the file.
+- `lyrics_earlier` and `lyrics_later` key actions (defaults `,` and `.`),
+  rebindable in `[keys]`.
+
+### Fixed
+- Toggling the navigation panel (`1`/`2`) no longer leaves a stale queue row
+  stuck at the top of the pane. The panel toggle changes the queue-pane
+  width, and Bubble Tea's line diff could leave the previously highlighted
+  row on screen; the interface now forces a full repaint when the panel
+  visibility flips.
+- A track load no longer blocks the interface loop; playback starts without
+  stalling the UI.
+- The first-run config template glued two `[keys]` comment lines together
+  (`crossfade_set` and `save_playlist`).
+
+## [0.7.22] - 2026-09-02
+
+### Added
+- Lyric timing offset. While the lyrics view shows synced lyrics, `,`
+  (`lyrics_earlier`) shifts the active-line timing 0.1 s earlier and `.`
+  (`lyrics_later`) shifts it 0.1 s later, clamped to ±10 s. The offset
+  shows in the lyrics page title (for example `[+0.3s]`) and persists per
+  song in a `.offset` sidecar file in the lyrics cache directory, so it
+  comes back with the song. A zero offset removes the file.
+- `lyrics_earlier` and `lyrics_later` key actions (defaults `,` and `.`),
+  rebindable in `[keys]`.
+
+## [0.7.21] - 2026-09-02
+
+### Added
+- Freetext lyrics search. While the lyrics view is open, `/`
+  (`lyrics_search`) opens a search prompt. The query runs against the local
+  lrclib dump (title/artist prefix match, with extra words as filters) and
+  against the lrclib.net search endpoint; the results merge and dedupe. Each
+  hit carries its lyrics, so picking it needs no second lookup. `Enter` on a
+  hit shows its lyrics; while a song plays they are saved to the lyrics cache
+  under that song's key, so the automatic lookup finds them from then on.
+  `[..]` or `4` returns to the playing song's lyrics.
+- `lyrics_search` key action (default `/`), rebindable in `[keys]`.
+
+### Fixed
+- The first-run config template glued two `[keys]` comment lines together
+  (`crossfade_set` and `save_playlist`).
+
 ## [0.7.20] - 2026-08-24
 
 ### Added

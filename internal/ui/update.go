@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"git.hemmalab.se/scuttle/tuiplay/internal/config"
+	"git.hemmalab.se/scuttle/tuiplay/internal/lyrics"
 	"git.hemmalab.se/scuttle/tuiplay/internal/player"
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
 
@@ -84,6 +84,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case trackEndedMsg:
 		return m.advance(true)
 
+	case playStartedMsg:
+		return m.playStarted(msg)
+
 	case levelMsg:
 		if msg.err != nil {
 			m.top().loading = false
@@ -136,7 +139,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Error: " + msg.err.Error()
 			return m, nil
 		}
-		m.player.Stop()
+		m.stopPlayer()
 		m.queue = msg.songs
 		m.queueCursor = 0
 		m.queueIndex = -1
@@ -220,6 +223,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			lyricsMissing: msg.missing,
 		}
 		m.lyricsNav = []navLevel{lvl}
+		m.lyricsOffset = msg.offset
+		return m, nil
+
+	case lyricsSearchMsg:
+		if len(msg.hits) == 0 {
+			if msg.err != nil {
+				return m.setTempStatus("Lyrics search failed: " + msg.err.Error())
+			}
+			return m.setTempStatus(fmt.Sprintf("No lyrics found for %q.", msg.query))
+		}
+		m.lyricsNav = append(m.lyricsNav, lyricsSearchLevel(msg.query, msg.hits))
+		m.focus = focusRight
+		m.rightShown = true
+		if msg.err != nil {
+			// One tier failed, but the shown hits are usable.
+			return m.setTempStatus("Lyrics search: " + msg.err.Error())
+		}
 		return m, nil
 
 	case coverMsg:
@@ -424,6 +444,13 @@ func (m model) confirmPrompt(kind promptKind, input string) (tea.Model, tea.Cmd)
 		}
 		m.searchEditKey = ""
 		return m, nil
+	case promptLyricsSearch:
+		if input == "" {
+			m.status = "Search cancelled."
+			return m, nil
+		}
+		m.status = "Searching lyrics: " + input + "..."
+		return m, m.searchLyricsCmd(input)
 	case promptSmartName:
 		if b := m.top().builder; b != nil {
 			b.name = input
@@ -477,7 +504,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	// Ctrl+C and the arrow keys are always available, whatever the config.
 	if key == "ctrl+c" {
-		m.player.Stop()
+		m.stopPlayer()
 		return m, tea.Quit
 	}
 	switch key {
@@ -489,6 +516,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// A layout toggle (show or hide the navigation panel) changes the
+	// width of the queue pane. Bubble Tea's line diff can leave a stale
+	// row on screen after such a width change, so force a full repaint
+	// when the panel visibility flips.
+	prevShown := m.rightShown
+	nm, cmd := m.dispatchAction(key)
+	if mm, ok := nm.(model); ok && mm.rightShown != prevShown {
+		return nm, tea.Batch(cmd, tea.ClearScreen)
+	}
+	return nm, cmd
+}
+
+// dispatchAction maps a resolved key to its action and runs it.
+func (m model) dispatchAction(key string) (tea.Model, tea.Cmd) {
 	action, ok := m.keyAction[key]
 	if !ok {
 		// The space key reports as " " but configs name it "space".
@@ -510,7 +551,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch action {
 	case config.ActQuit:
-		m.player.Stop()
+		m.stopPlayer()
 		return m, tea.Quit
 
 	case config.ActHideRight:
@@ -537,6 +578,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.showLyrics()
 	case config.ActShowCover:
 		return m.showCover()
+	case config.ActLyricsSearch:
+		return m.startLyricsSearch()
+	case config.ActLyricsEarlier:
+		return m.adjustLyricsOffset(-lyricsOffsetStep)
+	case config.ActLyricsLater:
+		return m.adjustLyricsOffset(lyricsOffsetStep)
 	case config.ActRateUp:
 		return m.rateUp()
 	case config.ActRateDown:
@@ -641,7 +688,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.player.TogglePause()
 		return m, nil
 	case config.ActStop:
-		m.player.Stop()
+		m.stopPlayer()
 		m.queueIndex = -1
 		m.transcoding = false
 		m.status = "Stopped."
@@ -686,7 +733,7 @@ func (m model) handleControl(msg controlMsg) (tea.Model, tea.Cmd) {
 		reply("ok")
 		return m, nil
 	case "stop":
-		m.player.Stop()
+		m.stopPlayer()
 		m.queueIndex = -1
 		m.transcoding = false
 		m.status = "Stopped."
@@ -829,7 +876,7 @@ func (m model) clearQueue() (tea.Model, tea.Cmd) {
 	m.confirmActive = true
 	m.confirmLabel = "Clear the queue? (y/n)"
 	m.confirmAction = func(mm model) (model, tea.Cmd) {
-		mm.player.Stop()
+		mm.stopPlayer()
 		mm.queue = nil
 		mm.queueCursor = 0
 		mm.queueIndex = -1
@@ -982,10 +1029,98 @@ func (m *model) refreshCoverIfPlaying() tea.Cmd {
 	m.coverNav = []navLevel{coverLoadingLevel(s.ID)}
 	return m.loadCover(s)
 }
+
+// startLyricsSearch opens the freetext lyrics search prompt. It works
+// only while the lyrics view is active.
+func (m model) startLyricsSearch() (tea.Model, tea.Cmd) {
+	if m.activeView != viewLyrics {
+		return m.setTempStatus("Lyrics search works in the lyrics view (4).")
+	}
+	if !m.lyricsSrc.Usable() {
+		return m.setTempStatus("Lyrics are off.")
+	}
+	m.promptActive = true
+	m.promptKind = promptLyricsSearch
+	m.promptLabel = "Search lyrics"
+	m.promptInput = ""
+	return m, nil
+}
+
+// lyricsOffsetStep is how much one timing-adjust key press shifts the
+// lyric timestamps.
+const lyricsOffsetStep = 100 * time.Millisecond
+
+// lyricsOffsetMax bounds the timing offset in both directions.
+const lyricsOffsetMax = 10 * time.Second
+
+// adjustLyricsOffset shifts the lyric timing of the playing song by delta.
+// A negative delta makes the lines show earlier, a positive one later. It
+// works only while the lyrics view shows synced lyrics. The offset
+// persists per song through the lyrics cache.
+func (m model) adjustLyricsOffset(delta time.Duration) (tea.Model, tea.Cmd) {
+	if m.activeView != viewLyrics {
+		return m, nil
+	}
+	lvl := m.topLevel()
+	if lvl.kind != navLyrics || !lvl.lyricsSynced || len(lvl.lyrics) == 0 {
+		return m.setTempStatus("No synced lyrics to adjust.")
+	}
+	m.lyricsOffset += delta
+	if m.lyricsOffset > lyricsOffsetMax {
+		m.lyricsOffset = lyricsOffsetMax
+	}
+	if m.lyricsOffset < -lyricsOffsetMax {
+		m.lyricsOffset = -lyricsOffsetMax
+	}
+	status := fmt.Sprintf("Lyrics offset: %+.1fs", m.lyricsOffset.Seconds())
+	if s, ok := m.currentSong(); ok {
+		tm, cmd := m.setTempStatus(status)
+		return tm, tea.Batch(cmd, m.saveLyricsOffset(s))
+	}
+	return m.setTempStatus(status)
+}
+
+// pickLyricsHit shows the lyrics of one search hit. When a song plays, a
+// command saves the lyrics to the cache for that exact song, so the
+// automatic lookup finds them from now on.
+func (m model) pickLyricsHit(hit lyrics.Hit) (tea.Model, tea.Cmd) {
+	lvl := navLevel{
+		kind:         navLyrics,
+		title:        "Lyrics " + lyricsQualityMark(hit.Synced, false) + hit.Title,
+		cursor:       -1,
+		lyrics:       lyricLinesFrom(hit.Lyrics),
+		lyricsSynced: hit.Synced,
+		lyricsManual: true,
+	}
+	m.lyricsNav = []navLevel{lvl}
+	note := "Lyrics: " + hit.Artist + " - " + hit.Title
+	if s, ok := m.currentSong(); ok {
+		m.status = note
+		return m, m.saveManualLyrics(s, hit.Lyrics)
+	}
+	return m.setTempStatus(note)
+}
+
+// saveManualLyrics stores user-picked lyrics in the cache tier under the
+// identity of one song. It writes nothing when the cache is off.
+func (m model) saveManualLyrics(s subsonic.Song, res lyrics.Result) tea.Cmd {
+	src := m.lyricsSrc
+	return func() tea.Msg {
+		src.Put(s.Artist, s.Title, s.Album, s.Duration, res)
+		return nil
+	}
+}
+
+// refreshLyricsIfPlaying reloads the lyrics view for the current song when
 // the lyrics view holds a different song. It returns a command to run, or
 // nil. When nothing plays, it resets the view to the empty placeholder.
 func (m *model) refreshLyricsIfPlaying() tea.Cmd {
 	if len(m.lyricsNav) == 0 {
+		return nil
+	}
+	// An open search view stays open. The user leaves it by picking a
+	// hit, pressing 4, or the [..] row.
+	if len(m.lyricsNav) > 1 {
 		return nil
 	}
 	s, ok := m.currentSong()
@@ -994,8 +1129,9 @@ func (m *model) refreshLyricsIfPlaying() tea.Cmd {
 		return nil
 	}
 	top := m.lyricsNav[len(m.lyricsNav)-1]
-	// Already loaded, or a lookup for this song is already in flight.
-	if top.lyricsSong == s.ID {
+	// Already loaded, a lookup for this song is already in flight, or the
+	// user pinned lyrics from a search hit.
+	if top.lyricsSong == s.ID || top.lyricsManual {
 		return nil
 	}
 	m.lyricsNav = []navLevel{lyricsLoadingLevel(s.ID)}
@@ -1009,6 +1145,10 @@ func (m *model) refreshLyricsIfPlaying() tea.Cmd {
 // this song. The lyricsMsg handler stores the result and guards staleness.
 func (m *model) prefetchLyrics(s subsonic.Song) tea.Cmd {
 	if !m.lyricsSrc.Usable() {
+		return nil
+	}
+	// An open search view stays open; do not clobber it.
+	if len(m.lyricsNav) > 1 {
 		return nil
 	}
 	// Already loaded, or a lookup for this song is already in flight.
@@ -1093,9 +1233,11 @@ func (m *model) updateRatingInNav(id string, rating int) {
 	}
 }
 
-// restoreFromQueue replaces the queue with a queue saved on the server. It
-// loads the current track and holds it paused at the saved position. It
-// does not start sound.
+// restoreFromQueue replaces the queue with a queue saved on the server.
+// It loads the current track and holds it paused at the saved position.
+// It does not start sound. The load runs in a command, so the download
+// does not block the interface loop. The playStartedMsg handler applies
+// the result.
 func (m model) restoreFromQueue(pq subsonic.PlayQueue) (tea.Model, tea.Cmd) {
 	m.queue = pq.Songs
 	m.queueCursor = 0
@@ -1108,25 +1250,18 @@ func (m model) restoreFromQueue(pq subsonic.PlayQueue) (tea.Model, tea.Cmd) {
 	m.queueCursor = m.queueIndex
 	s := m.queue[m.queueIndex]
 	url, suffix, err := streamSource(m.client, s)
-	if err == nil {
-		atSec := int(pq.Position / 1000)
-		if perr := m.player.PlayPausedAt(url, suffix, atSec); perr != nil {
-			if errors.Is(perr, player.ErrTranscodeNeeded) {
-				if tu, tsuf, terr := m.transcodeURL(s); terr == nil {
-					perr = m.player.PlayPausedAt(tu, tsuf, atSec)
-					m.transcoding = perr == nil
-				}
-			}
-			if perr != nil {
-				m.status = "Restore error: " + perr.Error()
-			}
-		}
+	if err != nil {
+		m.status = "Restore error: " + err.Error()
+		m.refreshXF()
+		return m, nil
 	}
+	req := m.playRequestFor(s, url, suffix, false, playKindRestore)
+	req.pausedAt = int(pq.Position / 1000)
 	m.refreshXF()
 	prefetch := m.prefetchLyrics(s)
 	prefetchC := m.prefetchCover(s)
-	tm, statusCmd := m.setTempStatus(fmt.Sprintf("Restored queue (%d songs, paused)", len(m.queue)))
-	return tm, tea.Batch(prefetch, prefetchC, statusCmd)
+	tm, statusCmd := m.setTempStatus(fmt.Sprintf("Restored queue (%d songs, loading track)...", len(m.queue)))
+	return tm, tea.Batch(req.cmd(), prefetch, prefetchC, statusCmd)
 }
 
 // smartPrev restarts the current song, or goes to the previous song when
@@ -1217,7 +1352,7 @@ func (m model) startRadio(pool []subsonic.Song, label string) (tea.Model, tea.Cm
 	if len(pool) == 0 {
 		return m.setTempStatus("Radio: source has no songs.")
 	}
-	m.player.Stop()
+	m.stopPlayer()
 	m.radio = true
 	m.radioPool = pool
 	m.consume = true
@@ -1421,6 +1556,12 @@ func (m model) openItem() (tea.Model, tea.Cmd) {
 		return m, m.replacePlaylist(row.id, row.name, true)
 	case navSearch:
 		return m.openSearchRow(row)
+	case navLyricsSearch:
+		// Enter on a hit shows its lyrics; a playing song keeps them.
+		if lvl.cursor >= 0 && lvl.cursor < len(lvl.lyricsHits) {
+			return m.pickLyricsHit(lvl.lyricsHits[lvl.cursor])
+		}
+		return m, nil
 	case navSmartBuilder:
 		return m.openSmartBuilderRow(row)
 	case navSmartField:
@@ -1661,45 +1802,9 @@ func (m model) streamFor(idx int) (url, suffix string, ok bool) {
 	return u, suf, true
 }
 
-// transcodeURL returns a server-transcoded stream URL and suffix for a song.
-// The ui uses it as the fallback when the player cannot decode the original
-// source natively (for example HE-AAC or ALAC in an m4a container).
-func (m model) transcodeURL(s subsonic.Song) (string, string, error) {
-	u, err := m.client.StreamURLFormat(s.ID, player.TranscodeFormat)
-	return u, player.TranscodeFormat, err
-}
-
-// playWithFallback plays a song. When the player cannot decode the source
-// natively, it retries once with a server-side transcode. It returns whether
-// the retry transcoded the source and any error.
-func (m model) playWithFallback(s subsonic.Song, url, suffix string) (transcoded bool, err error) {
-	err = m.player.Play(url, suffix)
-	if err != nil && errors.Is(err, player.ErrTranscodeNeeded) {
-		tu, tsuf, terr := m.transcodeURL(s)
-		if terr != nil {
-			return false, terr
-		}
-		return true, m.player.Play(tu, tsuf)
-	}
-	return false, err
-}
-
-// crossfadeWithFallback crossfades to a song, falling back to a server-side
-// transcode when the player cannot decode the source natively. It returns
-// whether the retry transcoded the source and any error.
-func (m model) crossfadeWithFallback(s subsonic.Song, url, suffix string, sec int) (transcoded bool, err error) {
-	err = m.player.Crossfade(url, suffix, sec)
-	if err != nil && errors.Is(err, player.ErrTranscodeNeeded) {
-		tu, tsuf, terr := m.transcodeURL(s)
-		if terr != nil {
-			return false, terr
-		}
-		return true, m.player.Crossfade(tu, tsuf, sec)
-	}
-	return false, err
-}
-
-// playCurrent plays the track at queueIndex.
+// playCurrent plays the track at queueIndex. The load runs in a command,
+// so the download does not block the interface loop. The status shows
+// Loading until the playStartedMsg handler applies the result.
 func (m model) playCurrent() (tea.Model, tea.Cmd) {
 	if m.queueIndex < 0 || m.queueIndex >= len(m.queue) {
 		return m, nil
@@ -1713,26 +1818,49 @@ func (m model) playCurrent() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Manual play crossfades when the mode is on and a track already plays.
-	var transcoded bool
-	if m.crossfade && m.player.State() != player.StateStopped {
-		if transcoded, err = m.crossfadeWithFallback(s, url, suffix, m.crossfadeSec); err != nil {
-			m.status = "Error: " + err.Error()
-			return m, nil
-		}
-	} else if transcoded, err = m.playWithFallback(s, url, suffix); err != nil {
-		m.status = "Error: " + err.Error()
+	crossfade := m.crossfade && m.player.State() != player.StateStopped
+	req := m.playRequestFor(s, url, suffix, crossfade, playKindPlay)
+	m.loadingPlay = true
+	m.status = "Loading: " + s.Artist + " - " + s.Title
+	m.refreshXF()
+	return m, req.cmd()
+}
+
+// playStarted applies the result of one asynchronous play request. A
+// dropped result does nothing: a newer request or a stop took over. On
+// success it shows the playing status and prefetches the lyrics and the
+// cover art.
+func (m model) playStarted(msg playStartedMsg) (tea.Model, tea.Cmd) {
+	if msg.dropped || !m.playGate.enter(msg.gen) {
 		return m, nil
 	}
-	m.transcoding = transcoded
-	if transcoded {
-		m.status = "Transcoding: " + s.Artist + " - " + s.Title
-	} else {
-		m.status = "Playing: " + s.Artist + " - " + s.Title
+	m.loadingPlay = false
+	if msg.err != nil {
+		if msg.kind == playKindRestore {
+			m.status = "Restore error: " + msg.err.Error()
+		} else {
+			m.status = "Error: " + msg.err.Error()
+		}
+		return m, nil
 	}
-	go m.client.Scrobble(s.ID, false)
+	m.transcoding = msg.transcoded
+	switch msg.kind {
+	case playKindRestore:
+		if msg.transcoded {
+			m.status = "Restored queue (paused, transcoding)"
+		} else {
+			m.status = fmt.Sprintf("Restored queue (%d songs, paused)", len(m.queue))
+		}
+	default:
+		if msg.transcoded {
+			m.status = "Transcoding: " + msg.song.Artist + " - " + msg.song.Title
+		} else {
+			m.status = "Playing: " + msg.song.Artist + " - " + msg.song.Title
+		}
+	}
 	m.refreshXF()
-	cmd := m.prefetchLyrics(s)
-	coverCmd := m.prefetchCover(s)
+	cmd := m.prefetchLyrics(msg.song)
+	coverCmd := m.prefetchCover(msg.song)
 	return m, tea.Batch(cmd, coverCmd)
 }
 
@@ -1787,7 +1915,7 @@ func (m model) advance(ended bool) (tea.Model, tea.Cmd) {
 
 	idx, stop := nextIndexPure(len(m.queue), m.queueIndex, m.repeat, m.shuffle, consumeRemoved)
 	if stop {
-		m.player.Stop()
+		m.stopPlayer()
 		m.queueIndex = -1
 		m.transcoding = false
 		m.status = "Queue finished."

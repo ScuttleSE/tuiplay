@@ -143,3 +143,40 @@ func TestCacheDisabled(t *testing.T) {
 		t.Fatal("disabled cache must report no hit and no block")
 	}
 }
+
+func TestCacheOffsetRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	c := NewCache(dir, 7)
+
+	// No offset stored: zero.
+	if got := c.GetOffset("Artist", "Title", "Album", 100); got != 0 {
+		t.Errorf("fresh offset = %v, want 0", got)
+	}
+
+	c.PutOffset("Artist", "Title", "Album", 100, -1500*time.Millisecond)
+	got := c.GetOffset("Artist", "Title", "Album", 100)
+	if got != -1500*time.Millisecond {
+		t.Errorf("offset = %v, want -1.5s", got)
+	}
+
+	// Keys differ per song: the other song stays at zero.
+	if got := c.GetOffset("Other", "Title", "Album", 100); got != 0 {
+		t.Errorf("other song offset = %v, want 0", got)
+	}
+
+	// A zero offset removes the file.
+	c.PutOffset("Artist", "Title", "Album", 100, 0)
+	if got := c.GetOffset("Artist", "Title", "Album", 100); got != 0 {
+		t.Errorf("offset after reset = %v, want 0", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, c.key("Artist", "Title", "Album", 100)+".offset")); !os.IsNotExist(err) {
+		t.Errorf("offset file survived the reset")
+	}
+
+	// A disabled cache never stores.
+	off := NewCache("", 7)
+	off.PutOffset("A", "T", "Al", 1, time.Second)
+	if got := off.GetOffset("A", "T", "Al", 1); got != 0 {
+		t.Errorf("disabled cache offset = %v, want 0", got)
+	}
+}
