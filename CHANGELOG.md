@@ -5,6 +5,17 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.25] - 2026-09-23
+
+### Fixed
+- GitHub release binaries now build in Debian 12 Bookworm containers. Debian
+  Bullseye's live security repository returned missing package versions during
+  the arm64 build, which made dependency installation fail before compilation.
+
+### Changed
+- Prebuilt Linux binaries now require glibc 2.36 or newer. They continue to
+  require the ALSA runtime library (`libasound2` or `alsa-lib`).
+
 ## [0.7.24] - 2026-09-23
 
 This release rolls up every change since the last published release (0.7.20):

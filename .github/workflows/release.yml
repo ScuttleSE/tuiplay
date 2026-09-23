@@ -7,11 +7,11 @@ name: Release binaries
 #
 # The binaries are dynamically linked against ALSA, so a user needs
 # libasound2 (alsa-lib) installed at runtime. They are built inside a
-# Debian 11 "bullseye" container (glibc 2.31) to keep a low glibc floor,
-# so the binaries run on a wide range of distributions.
+# Debian 12 "bookworm" container (glibc 2.36), so the binaries run on
+# Debian 12 and newer distributions.
 #
 # amd64 builds natively. arm64 builds under QEMU emulation inside an
-# arm64 bullseye container, so cgo uses a native aarch64 toolchain and
+# arm64 bookworm container, so cgo uses a native aarch64 toolchain and
 # the native libasound2-dev. Emulated builds are slow but simple and
 # correct.
 
@@ -24,7 +24,7 @@ permissions:
   contents: write
 
 # The upstream Go version to install inside the container. Debian
-# bullseye ships a much older Go, so the job downloads the official
+# bookworm ships a much older Go, so the job downloads the official
 # toolchain. Keep this in step with the go directive in go.mod.
 env:
   GO_VERSION: "1.27.0"
@@ -58,7 +58,7 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
-      - name: Build the binary in a bullseye container
+      - name: Build the binary in a bookworm container
         run: |
           set -eu
           out="tuiplay-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}"
@@ -67,7 +67,7 @@ jobs:
             -e GO_VERSION="${GO_VERSION}" \
             -e GOARCH="${{ matrix.goarch }}" \
             -e OUT="$out" \
-            debian:bullseye-slim bash -euo pipefail -c '
+            debian:bookworm-slim bash -euo pipefail -c '
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
               apt-get install -y --no-install-recommends \

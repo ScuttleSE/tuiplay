@@ -54,7 +54,7 @@ chmod +x tuiplay-*-linux-amd64
 
 The binaries are dynamically linked against ALSA, so you need the ALSA
 runtime library installed (`libasound2` on Debian/Ubuntu, `alsa-lib` on
-Arch). They are built on Debian 11 (glibc 2.31), so they run on that and
+Arch). They are built on Debian 12 (glibc 2.36), so they run on that and
 newer distributions.
 
 ### From source
