@@ -5,6 +5,23 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.28] - 2026-09-24
+
+### Fixed
+- Stale bold rows no longer pile up at the top of the queue after several
+  track changes. Bubble Tea's line diff could leave the previous playing
+  row's bold styling on screen, so the interface now forces a full repaint
+  whenever the playing track changes.
+
+### Changed
+- Updated the README for the current visualizer modes, Go requirement,
+  configuration, key-binding limits, lyrics behavior, smart playlists,
+  external control, and native audio support.
+- Synchronized `config.example.toml` and the generated first-run template with
+  all current options and actions, and corrected their zero-value semantics.
+- Updated maintenance documentation to remove contradictory current-state
+  guidance.
+
 ## [0.7.25] - 2026-09-23
 
 ### Fixed

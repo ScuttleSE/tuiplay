@@ -108,12 +108,12 @@ type Settings struct {
 	// Theme is the resolved color theme. The caller resolves it from the
 	// config before it calls Run.
 	Theme Theme
-	// Visualizer holds the beat-spark visualizer tunables, already
+	// Visualizer holds all visualizer tunables, already
 	// resolved to their effective values.
 	Visualizer VisualizerSettings
 }
 
-// VisualizerSettings holds the effective beat-spark visualizer tunables.
+// VisualizerSettings holds the effective visualizer tunables.
 type VisualizerSettings struct {
 	// SparkLife is how many frames a spark lives.
 	SparkLife int

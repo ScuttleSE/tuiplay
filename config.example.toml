@@ -25,7 +25,47 @@ crossfade_seconds = 4
 # grows past this size on its own.
 radio_queue_size = 10
 
-# Optional: tune the beat-spark visualizer mode (the "5" key, "beat sparks").
+# Optional: the directory where tuiplay writes smart-playlist files (.nsp).
+# It must already exist, be writable, and be visible to Navidrome. Empty hides
+# the feature. This path does not expand a leading ~.
+# nsp_path = "/srv/navidrome/playlists"
+
+# Optional: the path to an lrclib SQLite database dump for offline lyrics.
+# Download one from https://lrclib.net/db-dumps. Empty turns off this tier.
+# lrclib_db_path = "/srv/lrclib/db.sqlite3"
+
+# Optional: the directory where tuiplay caches lyrics. Empty uses the "lyrics"
+# directory under the standard user config directory, normally
+# ~/.config/tuiplay/lyrics.
+# lyrics_cache_path = "/home/you/.config/tuiplay/lyrics"
+
+# Optional: how many days a cached "no lyrics" result stays valid. An omitted
+# value or 0 uses 7 days. A negative value means the miss never expires.
+# lyrics_miss_recheck_days = 7
+
+# Optional: ordered network lyrics providers. The default enables both.
+# Set [] to disable all network lyrics requests.
+# lyrics_providers = ["lrcmux", "lrclib"]
+
+# Optional: a unix socket path for external control. Empty disables it. A
+# leading ~ expands to the home directory.
+# control_socket = "~/.config/tuiplay/control.sock"
+
+# Optional: built-in theme. Known values: default, catppuccin-latte,
+# catppuccin-frappe, catppuccin-macchiato, and catppuccin-mocha.
+# theme = "catppuccin-mocha"
+
+# Optional: override individual theme roles with #rrggbb colors. Uncomment the
+# table header and desired roles. Valid roles are: header, header_focus, rule,
+# artist, track, title, album, time, plain, back, sel_fg, sel_artist_bg,
+# sel_album_bg, sel_time_bg, progress, status_fg, status_bg, spinner,
+# help_border, help_fg, help_bg.
+# [theme_colors]
+# album = "#89b4fa"
+# progress = "#a6e3a1"
+
+# Optional: tune all fullscreen visualizer modes opened with the "5" key.
+# Uncomment the [visualizer] header and the desired keys.
 # Every key is optional; an unset key uses the default shown.
 # [visualizer]
 # How many animation frames a spark lives. Higher = sparks fly farther and
@@ -45,7 +85,8 @@ radio_queue_size = 10
 # spark_trail = 0
 # The radial bloom (the "radial bloom" mode) falloff. This is the fraction
 # of the previous frame's bloom kept when the audio quiets: higher falls
-# slower and smoother, 0 falls off instantly. Default 0.90.
+# slower and smoother. An omitted value or 0 uses 0.90; a negative value gives
+# instant falloff.
 # radial_decay = 0.90
 # Scales how far the bloom rays reach from the center. Higher fills more of
 # the window. Default 1.0.
@@ -53,23 +94,25 @@ radio_queue_size = 10
 # Scales the pulsing inner core radius of the bloom. Default 1.0.
 # radial_core = 1.0
 # Shared across all modes:
-# Scales how fast the palette hue drifts over time. 0 freezes it. Default 1.0.
+# Scales how fast the palette hue drifts. An omitted value or 0 uses 1.0; a
+# negative value freezes it.
 # hue_speed = 1.0
 # Scales how easily a beat triggers (the beat flash and the spark bursts).
 # Higher flashes more readily. Default 1.0.
 # beat_sensitivity = 1.0
 # Spectrum mode:
 # Bar falloff: the fraction of the previous frame kept as a bar falls.
-# Higher glides more; 0 is instant. Default 0.80.
+# Higher glides more. An omitted value or 0 uses 0.80; a negative value is instant.
 # spectrum_smoothing = 0.80
 # Peak-cap fall acceleration in eighths per frame^2. Higher drops faster.
 # Default 0.9.
 # spectrum_peak_gravity = 0.9
 # Lifts the higher-frequency bars so bass does not swamp a narrow window.
-# 0 disables the tilt. Default 0.12.
+# An omitted value or 0 uses 0.12; a negative value disables the tilt.
 # spectrum_tilt = 0.12
 # Neighbor-bleed (monstercat) strength that smooths single-column spikes.
-# Higher spreads less; a value of 1 or below disables it. Default 2.8.
+# Higher spreads less. An omitted value or 0 uses 2.8; a nonzero value of 1 or
+# below disables it.
 # spectrum_monstercat = 2.8
 # Waveform mode:
 # Envelope falloff: the fraction kept as the waveform falls. Default 0.90.
@@ -82,15 +125,21 @@ radio_queue_size = 10
 [ui]
 # The last right-pane state: "nav" (navigation panel shown) or "hidden".
 active_view = "nav"
-# The fraction of the width for the left queue pane, from 0 to 1.
+# The fraction of the width for the left queue pane. It must be greater than 0
+# and less than 1; invalid or omitted values use 0.6.
 split_ratio = 0.6
 
-# Key bindings. Uncomment a line to change a key. An unset action uses its
-# default. Two actions must not share a key. Keys are case sensitive.
+# Key bindings. Uncomment the [keys] header and each assignment to change.
+# An unset action uses its default. Two actions must not share a key. Keys are
+# case sensitive. Ctrl+C and arrow keys remain available and are fixed. In the
+# visualizer, Tab and Space cycle modes and Esc closes it.
 # [keys]
 # quit = "q"
 # hide_right = "1"
 # show_nav = "2"
+# show_search = "3"
+# show_lyrics = "4"
+# show_cover = "6"
 # lyrics_search = "/"
 # lyrics_earlier = ","
 # lyrics_later = "."
@@ -124,7 +173,10 @@ split_ratio = 0.6
 # seek_back = "b"
 # volume_up = "+"
 # volume_down = "-"
+# rate_up = "§"
+# rate_down = "½"
+# visualizer = "5"
+# edit = "e"
 # radio = "V"
 # radio_set = "v"
-
 

@@ -18,8 +18,21 @@ import (
 // statusHold is how long a temporary status message stays visible.
 const statusHold = 3500 * time.Millisecond
 
-// Update handles one message and returns the new model.
+// Update handles one message and returns the new model. It wraps the real
+// handler and forces a full repaint whenever the playing track changes.
+// Bubble Tea's line diff can leave the previous playing row's bold styling
+// on screen after an advance, so stale bold rows would otherwise pile up.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	prevIndex := m.queueIndex
+	nm, cmd := m.updateInner(msg)
+	if mm, ok := nm.(model); ok && mm.queueIndex != prevIndex {
+		return nm, tea.Batch(cmd, tea.ClearScreen)
+	}
+	return nm, cmd
+}
+
+// updateInner handles one message and returns the new model.
+func (m model) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

@@ -20,13 +20,13 @@ A terminal music player that streams from a [Navidrome](https://www.navidrome.or
 - Rate songs 0-5 (saved on the server), with a thumbs-down marker for a dislike.
 - Synchronized lyrics that follow the playing song, from a local cache, an lrclib dump, or network providers.
 - Album cover art in the right pane, rendered in three text-graphics modes (half-block, braille, blocks).
-- A fullscreen audio visualizer with five modes: spectrum, waveform, stereo spectrum, ellipse, and Lorenz attractor.
+- A fullscreen audio visualizer with five modes: spectrum, waveform, stereo spectrum, radial bloom, and beat sparks.
 - Color themes, including several Catppuccin variants, with per-role color overrides.
 - External control over a unix socket, so a streamdeck or a script can drive playback.
 - A status bar showing the current track, the playback state, the progress, and the mode flags.
-- Scrobble now-playing notifications back to Navidrome.
+- Send now-playing notifications back to Navidrome when a track starts.
 - Plays MP3, FLAC, Ogg Vorbis, and AAC-LC (in an m4a/mp4 container) directly; other formats (HE-AAC, ALAC) play through server-side transcoding.
-- ncmpcpp-style key bindings and layout. Every key is rebindable.
+- ncmpcpp-style layout and configurable action bindings.
 
 ## Requirements
 
@@ -36,8 +36,12 @@ To **run** the player you need a working audio setup:
 
 To **build** the player from source you additionally need:
 
-- Go 1.24 or newer.
-- `pkg-config` and the ALSA development headers (`libasound2-dev` on Debian/Ubuntu). These are needed by the audio backend at compile time only.
+- Go 1.27 or newer.
+- `pkg-config` and the ALSA development headers (`libasound2-dev` on Debian/Ubuntu).
+
+A UTF-8 terminal and a font with box-drawing, block, braille, and common symbol
+glyphs are recommended. Truecolor is preferred, but colors degrade to the
+terminal's supported color profile.
 
 ## Installation
 
@@ -135,9 +139,33 @@ radio_queue_size = 10
 # progress = "#a6e3a1"
 ```
 
+Network lyrics lookup is enabled by default. After the cache and optional
+SQLite dump miss, tuiplay contacts lrcmux and then lrclib.net. Set
+`lyrics_providers = []` to disable all network lyrics requests. An omitted or
+zero `lyrics_miss_recheck_days` uses seven days; a positive value sets the
+window, and a negative value means that cached misses never expire.
+
+The optional `[visualizer]` table tunes all five visualizer modes. Its keys are
+`spark_life`, `spark_speed`, `spark_gravity`, `spark_count`, `spark_trail`,
+`radial_decay`, `radial_reach`, `radial_core`, `hue_speed`,
+`beat_sensitivity`, `spectrum_smoothing`, `spectrum_peak_gravity`,
+`spectrum_tilt`, `spectrum_monstercat`, `wave_falloff`, and
+`stereo_smoothing`. The defaults and descriptions are in
+`config.example.toml`. For settings where zero means "use the default," use a
+negative value to request zero or disable the effect, as documented there.
+
+tuiplay maintains the `[ui]` section when it exits. `active_view` is `"nav"`
+or `"hidden"`; `split_ratio` is the fraction of terminal width used by the
+queue pane and must be greater than 0 and less than 1. The default ratio is
+0.6. Only this section is updated, so comments and other settings remain
+intact.
+
 The password never leaves your machine as clear text. The client sends a salted MD5 token to the server on every request, as the Subsonic API specifies.
 
-On the first run tuiplay writes a full template config (with every optional key documented) to the default path and exits, so you can edit it and run again.
+If the selected config file does not exist, tuiplay writes a full template at
+that path and exits. This applies to the default path and to `--config`. The
+parent directory and file are created with owner-only permissions; the config
+file mode is 0600.
 
 Keep this file private. It contains your password. The file must never be committed to a git repository.
 
@@ -185,8 +213,10 @@ Press `2` to show the browse view. It opens at the entrypoints:
 - **Tracks** → a broad list of tracks.
 - **Playlists** → your saved playlists → Enter queues the whole playlist.
 
-`Enter` drills down. The `[..]` row at the top of every level goes back up
-one level. `Enter` on a track plays it now. `a` adds a track to the queue.
+`Enter` drills down. Drilled browse levels show a `[..]` row that goes back one
+level; the browse root and the normal search, lyrics, and cover views do not.
+`Enter` on a right-pane track inserts it at the front of the queue and plays it
+now. It does not deduplicate the rest of the queue. `a` adds a track to the queue.
 `Space` adds everything under the selected item (a track, an album, an
 artist, a genre, a year, or a playlist) to the bottom of the queue.
 
@@ -199,6 +229,11 @@ query and shows the matching tracks; `Enter` on `Reset` clears the fields.
 The server does the free-text search; tuiplay then filters the results so
 each filled field matches its own tag.
 
+The Tracks entrypoint and each search request return at most 500 songs. The
+Subsonic API accepts only one free-text query, so tuiplay joins the filled form
+values for the server request and then applies field-specific substring filters
+to the returned songs. This is not a true server-side multi-field query.
+
 ### Lyrics
 
 Press `4` to show synchronized lyrics for the playing song. tuiplay looks
@@ -210,16 +245,22 @@ glyph: `♬` for synced, per-line timed lyrics and `♪` for plain, untimed
 lyrics. The view follows the song as it changes.
 
 Press `/` while the lyrics view is open to search for lyrics by freetext.
-The query matches the start of a title or artist in the local dump and
-against lrclib.net, so it also finds songs that are not playing. `Enter` on
-a hit shows its lyrics; while a song plays, they are saved to the cache for
-that song, so the automatic lookup finds them from then on. `[..]` returns
-to the playing song's lyrics.
+The query matches the start of a title or artist in the local dump and searches
+lrclib.net, so it also finds songs that are not playing. lrcmux has no search
+endpoint. Search results have a `[..]` row that returns without selecting a
+result. `Enter` on a hit opens a manual lyrics page; while a song plays, the
+lyrics are saved to its cache key. The manual page has no back row. Press `4`
+to return to the playing song's automatic lyrics.
 
 If the synced lyrics run slightly ahead of or behind the music, press `,`
 to shift the lines earlier and `.` to shift them later, in 0.1-second steps
 (up to ±10 s). The offset shows in the page header and is saved per song,
 so it comes back with the song.
+
+The cache key uses normalized artist, title, album, and duration. Found lyrics
+use `.lrc` files, clean total misses use `.miss` files, and timing adjustments
+use `.offset` sidecars. A provider error does not create a cached miss, so a
+temporary network failure is retried later.
 
 ### Cover art
 
@@ -253,8 +294,8 @@ radio mode is on.
 
 ### Smart playlists
 
-When `nsp_path` points at a directory Navidrome scans, the Playlists level
-shows a `[New smart playlist]` row. It opens a guided builder for a name,
+When `nsp_path` points at an existing writable directory that Navidrome scans,
+the Playlists level shows a `[New smart playlist]` row. It opens a guided builder for a name,
 one or more conditions (a field, an operator, and a value), an optional
 sort field, order, and limit. `Save` writes a Navidrome `.nsp` file and
 triggers an incremental scan so Navidrome imports it. The condition fields
@@ -263,6 +304,12 @@ lastplayed, dateadded, and filepath. Press `e` on a playlist row to reopen
 the builder loaded with that playlist's `.nsp` file and edit it. Deleting such
 a playlist also removes its `.nsp` file so it does not reappear on the next
 scan.
+
+tuiplay does not create `nsp_path`, and this path does not expand a leading
+`~`. The editor supports the builder's curated fields and one flat top-level
+`all` group; it rejects nested groups and unknown fields without changing the
+file. Saving the file and starting a scan are separate steps. If the account
+cannot start a scan, the `.nsp` file remains saved for a later Navidrome scan.
 
 ### Ratings
 
@@ -274,11 +321,17 @@ thumbs-down glyph in the queue. Higher ratings show as filled stars.
 ### Visualizer
 
 `5` opens a fullscreen audio visualizer. `Tab` or `Space` cycles five modes:
-a frequency spectrum, a time-domain waveform, a stereo mirror spectrum, a
-pulsing ellipse, and a Lorenz attractor. `Esc` or `5` closes it. The spectrum
-and waveform use a green-yellow-red height gradient; the ellipse and Lorenz
-use a rainbow hue wheel. All colors adapt to your terminal's color support.
-Playback keys still work while it is open.
+
+- **spectrum** — FFT frequency bars with smoothing and falling peak caps;
+- **waveform** — a filled time-domain waveform with a decaying envelope;
+- **stereo spectrum** — separate left and right spectra mirrored around the center;
+- **radial bloom** — spectrum bands radiating from a pulsing center;
+- **beat sparks** — beat-driven braille particles with optional gravity and trails.
+
+`Esc` or `5` closes it. The visualizer uses a vivid palette whose hue drifts
+over time; loud cells brighten toward white and detected beats flash the
+display. Colors adapt to the terminal's color support. Playback keys still work
+while it is open.
 
 ### Themes
 
@@ -293,8 +346,10 @@ affected by the theme.
 
 ### Key bindings
 
-The bindings follow ncmpcpp defaults where practical. Every action is
-rebindable in the config; see the `[keys]` section below.
+The bindings follow ncmpcpp defaults where practical. Named actions are
+rebindable in the config; see the `[keys]` section below. `Ctrl+C` and the
+arrow keys are fixed. Prompt editing, confirmation keys, and the visualizer's
+`Tab`/`Space`/`Esc` controls are also context-specific and fixed.
 
 | Key            | Action                                   |
 |----------------|------------------------------------------|
@@ -339,7 +394,7 @@ rebindable in the config; see the `[keys]` section below.
 | `<`            | Previous track (restart, then previous within two seconds) |
 | `f`            | Seek forward (default 10 seconds)        |
 | `b`            | Seek back (default 10 seconds)           |
-| `+` / `=`      | Raise the volume by 5%                   |
+| `+`            | Raise the volume by 5%                   |
 | `-`            | Lower the volume by 5%                   |
 | `q` / `Ctrl+C` | Quit                                     |
 
@@ -353,7 +408,9 @@ rebindable in the config; see the `[keys]` section below.
   that remain.
 - `x` / `X` crossfade: `x` toggles it, `X` sets the length. When on, the
   player overlaps the outgoing and incoming tracks with an equal-power
-  transition.
+  transition. Automatic end-of-track crossfade requires consume mode to be
+  off; manual next and play operations can still crossfade. Radio mode forces
+  consume on, so it does not use automatic end-of-track crossfades.
 - `V` / `v` radio (feeder): `V` toggles a bounded, self-refilling queue drawn
   from the focused playlist or search result; `v` sets its target size. See
   the "Radio (feeder) mode" section above.
@@ -385,7 +442,8 @@ queue did not come from a playlist, `Ctrl+s` acts like `S`.
 The config file has an optional `[keys]` section that maps an action name to
 a key. An unset action uses its default. Two actions must not share a key,
 and an unknown action name is an error. See `config.example.toml` for the
-full list of actions and their defaults.
+full list of actions, defaults, and fixed-key exceptions. To enable overrides,
+uncomment both the `[keys]` header and the desired assignments.
 
 ### Consume mode
 
@@ -418,34 +476,46 @@ tuiplay ctl pause
 tuiplay ctl playlist "Focus Mix"
 tuiplay ctl volume +
 tuiplay ctl seek -10
+tuiplay ctl --config /path/to/config.toml next
 ```
 
 The commands are:
 
 | Command                 | Effect                                            |
 |-------------------------|---------------------------------------------------|
-| `play`, `pause`, `playpause`, `toggle` | Toggle pause                       |
+| `play`, `pause`, `playpause`, `toggle` | Toggle pause or resume              |
 | `stop`                  | Stop playback                                     |
 | `next`                  | Advance to the next track                         |
 | `prev` (or `previous`)  | Restart the song, or go to the previous one       |
-| `seek <seconds>`        | Seek by a signed number of seconds, e.g. `seek -10` |
-| `volume <+\|-\|N>` (or `vol`) | Raise, lower, or set the volume percent      |
+| `seek <seconds>`        | Seek by a signed integer number of seconds, e.g. `seek -10` |
+| `volume <+\|-\|up\|down\|N>` (or `vol`) | Raise, lower, or set the volume percent |
 | `playlist <name>`       | Replace the queue with a named playlist and play it |
 
 The playlist match is case-insensitive: an exact name wins, otherwise the
 first prefix match. With random mode on, playback starts on a random track.
 
+The four pause commands are aliases for one toggle. They do nothing when no
+track is loaded; `play` and `pause` are not idempotent state-setting commands.
+Absolute volume values are clamped to 0-100.
+
 The socket is created with owner-only permissions (mode 0600), so only your
-user can connect. An optional `--config <path>` before the command overrides
-the config path. On an error the subcommand prints the reason and exits with
-a non-zero status.
+user can connect. The path must be dedicated to tuiplay because startup removes
+an existing entry there as a presumed stale socket. A socket startup failure is
+nonfatal: tuiplay warns and continues without external control. Put an optional
+`--config <path>` after `ctl` and before the command, as shown above.
+
+The subcommand exits nonzero for config, connection, protocol, and immediately
+validated command errors. `playlist <name>` is asynchronous: `ok` means the
+request was queued, not that lookup and loading succeeded. A later error appears
+in the running TUI.
 
 ## How it works
 
 - The library data comes from the Subsonic / OpenSubsonic API. tuiplay browses by artist, album, genre, year, and playlist, searches with `search3`, and reads playlists, ratings, and (when supported) a server-side play queue.
-- To play a track, the client downloads the stream from the `stream` endpoint to a temporary file, then decodes and plays it. The temporary file is removed when playback ends. A temporary file is used because audio decoding needs a seekable source, and a network response is not seekable.
-- Supported audio formats are MP3, FLAC, Ogg Vorbis, and AAC-LC in an m4a/mp4 container. The AAC decoder is pure Go (go-m4a demuxes the container, go-aac decodes the audio), so it needs no extra codec on your machine. For a source the player cannot decode natively (HE-AAC, ALAC, or any other unsupported format), tuiplay asks Navidrome to transcode it to MP3 on the fly. While a track plays through a transcode, the status bar shows a `t` flag next to the other mode flags.
+- To play a track, the client downloads the full stream from the `stream` endpoint to a temporary file, then decodes and plays it. Large files or slow connections can therefore show `Loading` for a while before audio starts. The temporary file is removed when playback stops or the track closes. A file is used because audio decoding needs a seekable source, and a network response is not seekable.
+- Supported native formats are MP3, FLAC, Ogg Vorbis (`.ogg`, `.oga`), and AAC-LC mono or stereo at 44.1 or 48 kHz in an MP4-family container (`.m4a`, `.m4b`, `.mp4`). Ogg Opus, HE-AAC, ALAC, unsupported AAC combinations, and other formats use Navidrome's server-side MP3 transcoding. Native AAC is decoded completely into memory because its decoder is forward-only. Files reported with an `.aac` suffix use the same MP4/M4A path; raw ADTS AAC is not a documented native format. While a track plays through a transcode, the status bar shows a `t` flag next to the other mode flags.
 - When the server supports the `indexBasedQueue` OpenSubsonic extension, tuiplay saves your play queue on exit and restores it on the next run, paused at the saved position.
+- tuiplay currently sends a Subsonic now-playing notification when a track starts. It does not send a final `submission=true` play scrobble when the track completes.
 
 ## Version
 

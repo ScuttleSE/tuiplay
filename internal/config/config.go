@@ -61,12 +61,13 @@ radio_queue_size = 10
 
 # Optional: the directory where tuiplay caches lyrics, one .lrc file per
 # song. The lyrics lookup checks this cache first. When this value is empty,
-# tuiplay uses the default directory (a "lyrics" folder next to this file).
+# tuiplay uses the "lyrics" folder under its standard user config directory,
+# normally ~/.config/tuiplay/lyrics.
 # lyrics_cache_path = "/home/you/.config/tuiplay/lyrics"
 
 # Optional: how many days a cached "no lyrics" result stays valid. After
 # this many days tuiplay rechecks the dump and the network. Default is 7.
-# A value of 0 means a miss never goes stale.
+# An omitted value or 0 uses 7 days. A negative value never goes stale.
 # lyrics_miss_recheck_days = 7
 
 # Optional: the ordered list of network lyrics providers. tuiplay tries them
@@ -105,7 +106,8 @@ radio_queue_size = 10
 # album = "#89b4fa"
 # progress = "#f38ba8"
 
-# Optional: tune the beat-spark visualizer mode (the "5" key, "beat sparks").
+# Optional: tune all fullscreen visualizer modes opened with the "5" key.
+# Uncomment the [visualizer] header and the desired keys.
 # Every key is optional; an unset key uses the default shown.
 # [visualizer]
 # How many animation frames a spark lives. Higher = sparks fly farther and
@@ -125,7 +127,8 @@ radio_queue_size = 10
 # spark_trail = 0
 # The radial bloom (the "radial bloom" mode) falloff. This is the fraction
 # of the previous frame's bloom kept when the audio quiets: higher falls
-# slower and smoother, 0 falls off instantly. Default 0.90.
+# slower and smoother. An omitted value or 0 uses 0.90; a negative value gives
+# instant falloff.
 # radial_decay = 0.90
 # Scales how far the bloom rays reach from the center. Higher fills more of
 # the window. Default 1.0.
@@ -133,23 +136,25 @@ radio_queue_size = 10
 # Scales the pulsing inner core radius of the bloom. Default 1.0.
 # radial_core = 1.0
 # Shared across all modes:
-# Scales how fast the palette hue drifts over time. 0 freezes it. Default 1.0.
+# Scales how fast the palette hue drifts. An omitted value or 0 uses 1.0; a
+# negative value freezes it.
 # hue_speed = 1.0
 # Scales how easily a beat triggers (the beat flash and the spark bursts).
 # Higher flashes more readily. Default 1.0.
 # beat_sensitivity = 1.0
 # Spectrum mode:
 # Bar falloff: the fraction of the previous frame kept as a bar falls.
-# Higher glides more; 0 is instant. Default 0.80.
+# Higher glides more. An omitted value or 0 uses 0.80; a negative value is instant.
 # spectrum_smoothing = 0.80
 # Peak-cap fall acceleration in eighths per frame^2. Higher drops faster.
 # Default 0.9.
 # spectrum_peak_gravity = 0.9
 # Lifts the higher-frequency bars so bass does not swamp a narrow window.
-# 0 disables the tilt. Default 0.12.
+# An omitted value or 0 uses 0.12; a negative value disables the tilt.
 # spectrum_tilt = 0.12
 # Neighbor-bleed (monstercat) strength that smooths single-column spikes.
-# Higher spreads less; a value of 1 or below disables it. Default 2.8.
+# Higher spreads less. An omitted value or 0 uses 2.8; a nonzero value of 1 or
+# below disables it.
 # spectrum_monstercat = 2.8
 # Waveform mode:
 # Envelope falloff: the fraction kept as the waveform falls. Default 0.90.
@@ -162,11 +167,14 @@ radio_queue_size = 10
 [ui]
 # The last right-pane state: "nav" (navigation panel shown) or "hidden".
 active_view = "nav"
-# The fraction of the width for the left queue pane, from 0 to 1.
+# The fraction of the width for the left queue pane. It must be greater than 0
+# and less than 1; invalid or omitted values use 0.6.
 split_ratio = 0.6
 
-# Key bindings. Uncomment a line to change a key. An unset action uses its
-# default. Two actions must not share a key. Keys are case sensitive.
+# Key bindings. Uncomment the [keys] header and each assignment to change.
+# An unset action uses its default. Two actions must not share a key. Keys are
+# case sensitive. Ctrl+C and arrow keys remain available and are fixed. In the
+# visualizer, Tab and Space cycle modes and Esc closes it.
 # [keys]
 # quit = "q"
 # hide_right = "1"
@@ -241,8 +249,8 @@ type Config struct {
 	// means the default of 10 seconds.
 	SeekSeconds int `toml:"seek_seconds"`
 
-	// CrossfadeSeconds is the crossfade length. A value of zero disables
-	// crossfade until the user turns it on.
+	// CrossfadeSeconds is the crossfade length. A value of zero means the
+	// default of four seconds. Crossfade starts disabled.
 	CrossfadeSeconds int `toml:"crossfade_seconds"`
 
 	// RadioQueueSize is the target queue size for radio (feeder) mode. A
@@ -258,7 +266,7 @@ type Config struct {
 	LrclibDBPath string `toml:"lrclib_db_path"`
 
 	// LyricsCachePath is the directory where tuiplay caches lyrics. An
-	// empty value means the default directory next to the config file.
+	// empty value means the standard user config directory.
 	LyricsCachePath string `toml:"lyrics_cache_path"`
 
 	// LyricsMissRecheckDays is how many days a cached miss stays valid. A
@@ -284,7 +292,7 @@ type Config struct {
 	// role name and each value is a "#rrggbb" hex color.
 	ThemeColors map[string]string `toml:"theme_colors"`
 
-	// Visualizer holds the tunables for the beat-spark visualizer mode.
+	// Visualizer holds the tunables for all visualizer modes.
 	Visualizer VisualizerConfig `toml:"visualizer"`
 
 	// UI holds the interface state that persists across runs.
@@ -294,7 +302,7 @@ type Config struct {
 	Keys map[string]string `toml:"keys"`
 }
 
-// VisualizerConfig holds the tunables for the beat-spark visualizer mode.
+// VisualizerConfig holds the tunables for all visualizer modes.
 // A zero value for a numeric field means "use the built-in default". The
 // pointer fields distinguish an unset key from a deliberate zero.
 type VisualizerConfig struct {
@@ -325,8 +333,8 @@ type VisualizerConfig struct {
 	// RadialDecay controls how fast the radial bloom falls off when the
 	// audio quiets. It is the per-frame retained fraction of the previous
 	// frame's band levels: a rising level snaps up instantly, a falling
-	// level decays by this factor. A value near 1 falls slowly; 0 means no
-	// smoothing (instant falloff). Default 0.90.
+	// level decays by this factor. A value near 1 falls slowly. Zero uses the
+	// default; a negative value means no smoothing. Default 0.90.
 	RadialDecay float64 `toml:"radial_decay"`
 
 	// RadialReach scales how far the bloom rays extend from the center for a
@@ -338,7 +346,8 @@ type VisualizerConfig struct {
 	RadialCore float64 `toml:"radial_core"`
 
 	// HueSpeed scales how fast the palette hue drifts over time, across all
-	// modes. 1.0 is the default. 0 freezes the hue.
+	// modes. 1.0 is the default. Zero uses the default; a negative value
+	// freezes the hue.
 	HueSpeed float64 `toml:"hue_speed"`
 
 	// BeatSensitivity scales how easily a beat triggers, affecting the
@@ -348,7 +357,7 @@ type VisualizerConfig struct {
 
 	// SpectrumSmoothing is the per-frame retained fraction of the spectrum
 	// bar levels when they fall. Higher falls slower and glides more.
-	// Default 0.80. 0 means no smoothing.
+	// Default 0.80. Zero uses the default; a negative value means no smoothing.
 	SpectrumSmoothing float64 `toml:"spectrum_smoothing"`
 
 	// SpectrumPeakGravity is the downward acceleration of the falling peak
@@ -358,12 +367,12 @@ type VisualizerConfig struct {
 
 	// SpectrumTilt lifts the higher frequency bars so bass does not swamp a
 	// narrow window. It is the extra level added to the top band. Default
-	// 0.12. 0 disables the tilt. A negative value clamps to 0.
+	// 0.12. Zero uses the default; a negative value disables the tilt.
 	SpectrumTilt float64 `toml:"spectrum_tilt"`
 
 	// SpectrumMonstercat controls how strongly a bar bleeds into its
 	// neighbors, smoothing single-column spikes. Higher spreads less.
-	// Default 2.8. A value of 1 or below disables the filter.
+	// Default 2.8. Zero uses the default. Other values of 1 or below disable it.
 	SpectrumMonstercat float64 `toml:"spectrum_monstercat"`
 
 	// WaveFalloff is the per-frame retained fraction of the waveform
@@ -372,7 +381,7 @@ type VisualizerConfig struct {
 
 	// StereoSmoothing is the per-frame retained fraction of the stereo
 	// spectrum band levels when they fall. Higher glides more. Default
-	// 0.80. 0 means no smoothing.
+	// 0.80. Zero uses the default; a negative value means no smoothing.
 	StereoSmoothing float64 `toml:"stereo_smoothing"`
 }
 
