@@ -563,13 +563,13 @@ func (m model) renderStatus() string {
 	// When a confirm is active, the status bar asks the question.
 	if m.confirmActive {
 		body := " " + m.confirmLabel
-		return m.styles.status.Render(trim(pad(body, m.width), m.width))
+		return m.styles.status.Render(trim(oneLine(pad(body, m.width)), m.width))
 	}
 
 	// When the prompt is active, the status bar becomes the input line.
 	if m.promptActive {
 		body := " " + m.promptLabel + ": " + m.promptInput + "_"
-		return m.styles.status.Render(trim(pad(body, m.width), m.width))
+		return m.styles.status.Render(trim(oneLine(pad(body, m.width)), m.width))
 	}
 
 	var left string
@@ -651,7 +651,19 @@ func (m model) renderStatus() string {
 		space = 1
 	}
 	body := " " + left + strings.Repeat(" ", space) + right + " "
-	return m.styles.status.Render(trim(body, m.width))
+	return m.styles.status.Render(trim(oneLine(body), m.width))
+}
+
+// oneLine collapses newlines and other control characters to spaces, so a
+// status message that carries an embedded newline (for example an error
+// string) cannot make the status bar span more than one terminal row.
+func oneLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == '\t' || (r < 0x20) {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 // queueLength returns the total duration of the queue in ncmpcpp phrasing.

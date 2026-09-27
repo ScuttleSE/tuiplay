@@ -5,6 +5,16 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.29] - 2026-09-27
+
+### Fixed
+- A self-dismissing status or error message no longer leaves a stale row
+  stuck near the top of the interface. A message that carried an embedded
+  newline made the status bar span two rows, which shifted the frame; the
+  status bar now collapses newlines and control characters so it always
+  occupies exactly one row, and the interface forces a full repaint when a
+  temporary status message expires.
+
 ## [0.7.28] - 2026-09-24
 
 ### Fixed

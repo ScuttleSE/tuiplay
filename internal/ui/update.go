@@ -90,9 +90,10 @@ func (m model) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, visTick()
 
 	case statusExpiredMsg:
-		// The view checks the expiry time. This message only forces a
-		// redraw when the temporary status ends.
-		return m, nil
+		// The view checks the expiry time. Force a full repaint when the
+		// temporary status ends, so no stale row survives if the message
+		// changed the frame height.
+		return m, tea.ClearScreen
 
 	case trackEndedMsg:
 		return m.advance(true)
