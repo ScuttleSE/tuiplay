@@ -5,6 +5,12 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.31] - 2026-09-30
+
+### Added
+- The README now has a Screenshots section: the queue with synchronized
+  lyrics, the album cover-art view, and the playlists browser.
+
 ## [0.7.29] - 2026-09-27
 
 ### Fixed

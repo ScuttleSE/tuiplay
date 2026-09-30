@@ -9,6 +9,20 @@ A terminal music player that streams from a [Navidrome](https://www.navidrome.or
 
 `tuiplay` talks to Navidrome through the Subsonic / OpenSubsonic API. It browses your library by artist and album, builds a play queue, and plays audio directly through your system's sound device.
 
+## Screenshots
+
+**Queue with synchronized lyrics** — the active line follows playback.
+
+![Queue and synchronized lyrics](docs/screenshots/lyrics.png)
+
+**Album cover art** — rendered in the right pane in half-block mode.
+
+![Queue and album cover art](docs/screenshots/cover-art.png)
+
+**Playlists** — browse, play, and build smart playlists.
+
+![Queue and playlists browser](docs/screenshots/playlists.png)
+
 ## Features
 
 - Browse the library by artist, album, genre, release year, and track (organized by ID3 tags).
