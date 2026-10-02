@@ -89,6 +89,11 @@ radio_queue_size = 10
 # is off. A leading ~ expands to your home directory.
 # control_socket = "~/.config/tuiplay/control.sock"
 
+# Optional: the verbose log file. tuiplay writes it only when started with
+# -v (debug) or -vv (trace). The --log flag overrides this key. When empty,
+# the log is "tuiplay.log" next to this config file.
+# log_path = "~/.config/tuiplay/tuiplay.log"
+
 # Optional: the color theme. tuiplay ships these names:
 #   default, catppuccin-latte, catppuccin-frappe, catppuccin-macchiato,
 #   catppuccin-mocha.
@@ -283,6 +288,11 @@ type Config struct {
 	// When set, tuiplay listens on it and the "tuiplay ctl" subcommand
 	// sends commands to it. An empty value turns the feature off.
 	ControlSocket string `toml:"control_socket"`
+
+	// LogPath is the verbose log file path. An empty value means
+	// "tuiplay.log" next to the config file. tuiplay writes it only when
+	// run with -v or -vv.
+	LogPath string `toml:"log_path"`
 
 	// Theme is the name of the color theme. An empty value means the
 	// "default" theme. Known names ship with tuiplay.
@@ -562,6 +572,23 @@ func (c *Config) RadioSize() int {
 // expanded to the user home directory. An empty value stays empty.
 func (c *Config) ControlSocketPath() string {
 	return expandHome(c.ControlSocket)
+}
+
+// LogFilePath returns the verbose log path. A leading ~ expands. An empty
+// log_path means "tuiplay.log" in the directory of configPath, or of the
+// default config path when configPath is empty.
+func (c *Config) LogFilePath(configPath string) string {
+	if c.LogPath != "" {
+		return expandHome(c.LogPath)
+	}
+	if configPath == "" {
+		p, err := DefaultPath()
+		if err != nil {
+			return "tuiplay.log"
+		}
+		configPath = p
+	}
+	return filepath.Join(filepath.Dir(configPath), "tuiplay.log")
 }
 
 // expandHome expands a leading ~ in a path to the user home directory. It

@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 )
 
 // Source looks up lyrics through a tiered chain. It checks the local cache
@@ -137,15 +139,20 @@ func (s *Source) Lookup(artist, title, album string, durationSec int) (Result, b
 	// Tier 1: the cache. A hit wins. A fresh miss blocks the chain.
 	res, hit, blocked := s.cache.Get(artist, title, album, durationSec)
 	if hit {
+		logging.Debug("lyrics hit", "tier", "cache", "artist", artist, "title", title)
 		return res, true
 	}
 	if blocked {
+		logging.Debug("lyrics cached miss", "artist", artist, "title", title)
 		return Result{}, false
 	}
 
 	// Tier 2: the lrclib SQLite dump.
 	if s.dump != nil {
-		if r, ok := s.dump.Lookup(artist, title, album, durationSec); ok {
+		start := time.Now()
+		r, ok := s.dump.Lookup(artist, title, album, durationSec)
+		logging.Debug("lyrics dump lookup", "found", ok, "took", time.Since(start))
+		if ok {
 			s.cache.Put(artist, title, album, durationSec, r)
 			return r, true
 		}
@@ -155,7 +162,9 @@ func (s *Source) Lookup(artist, title, album string, durationSec int) (Result, b
 	// the next provider. A clean miss also moves on.
 	provErr := false
 	for _, f := range s.net {
+		start := time.Now()
 		r, found, err := f.Fetch(artist, title, album, durationSec)
+		logging.Debug("lyrics provider", "name", f.Name(), "found", found, "err", err, "took", time.Since(start))
 		if err != nil {
 			provErr = true
 			fmt.Fprintf(os.Stderr, "warning: lyrics provider %s: %v\n", f.Name(), err)

@@ -5,6 +5,16 @@ under Added, Changed, Fixed, and Removed.
 
 ## [Unreleased]
 
+## [0.7.33] - 2026-10-02
+
+### Added
+- Verbose logging: `-v` writes debug records and `-vv` adds trace records to a
+  log file (`--log <path>`, else `log_path`, else `tuiplay.log` next to the
+  config). Logging is off by default.
+- A hang watchdog dumps every goroutine stack to the log when the interface
+  makes no progress for 5 s. `SIGUSR1` dumps the stacks on demand.
+- Slow `Update` handlers and slow speaker-lock waits log a warning.
+
 ## [0.7.31] - 2026-09-30
 
 ### Added

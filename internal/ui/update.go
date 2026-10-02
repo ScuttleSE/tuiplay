@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"git.hemmalab.se/scuttle/tuiplay/internal/config"
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 	"git.hemmalab.se/scuttle/tuiplay/internal/lyrics"
 	"git.hemmalab.se/scuttle/tuiplay/internal/player"
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
@@ -23,6 +24,45 @@ const statusHold = 3500 * time.Millisecond
 // Bubble Tea's line diff can leave the previous playing row's bold styling
 // on screen after an advance, so stale bold rows would otherwise pile up.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if !logging.Enabled() {
+		return m.update(msg)
+	}
+	name := fmt.Sprintf("%T", msg)
+	if k, ok := msg.(tea.KeyMsg); ok {
+		name = "key " + k.String()
+	}
+	watchdog.Beat("in Update: " + name)
+	noisy := isNoisyMsg(msg)
+	if !noisy {
+		logging.Trace("update begin", "msg", name)
+	}
+	start := time.Now()
+	nm, cmd := m.update(msg)
+	d := time.Since(start)
+	watchdog.Beat("idle after " + name)
+	switch {
+	case d > 250*time.Millisecond:
+		logging.Warn("slow update", "msg", name, "took", d)
+	case !noisy:
+		logging.Trace("update end", "msg", name, "took", d)
+	}
+	if mm, ok := nm.(model); ok && mm.queueIndex != m.queueIndex {
+		logging.Debug("queue index change", "from", m.queueIndex, "to", mm.queueIndex, "len", len(mm.queue))
+	}
+	return nm, cmd
+}
+
+// isNoisyMsg reports a message that fires many times per second. The trace
+// log skips it unless the update is slow.
+func isNoisyMsg(msg tea.Msg) bool {
+	switch msg.(type) {
+	case visTickMsg, spinTickMsg:
+		return true
+	}
+	return false
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	prevIndex := m.queueIndex
 	nm, cmd := m.updateInner(msg)
 	if mm, ok := nm.(model); ok && mm.queueIndex != prevIndex {

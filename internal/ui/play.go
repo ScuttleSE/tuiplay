@@ -3,7 +3,9 @@ package ui
 import (
 	"errors"
 	"sync"
+	"time"
 
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 	"git.hemmalab.se/scuttle/tuiplay/internal/player"
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
 
@@ -82,7 +84,10 @@ type playRequest struct {
 // start, and returns a playStartedMsg.
 func (r playRequest) cmd() tea.Cmd {
 	return func() tea.Msg {
+		logging.Debug("play request begin", "gen", r.gen, "kind", r.kind, "song", r.song.ID, "artist", r.song.Artist, "title", r.song.Title, "suffix", r.suffix, "crossfade", r.crossfade)
+		start := time.Now()
 		transcoded, err := r.load()
+		logging.Debug("play request end", "gen", r.gen, "transcoded", transcoded, "err", err, "took", time.Since(start))
 		if errors.Is(err, errStale) {
 			return playStartedMsg{gen: r.gen, kind: r.kind, song: r.song, dropped: true}
 		}

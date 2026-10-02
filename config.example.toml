@@ -51,6 +51,11 @@ radio_queue_size = 10
 # leading ~ expands to the home directory.
 # control_socket = "~/.config/tuiplay/control.sock"
 
+# Optional: the verbose log file. tuiplay writes it only when started with
+# -v (debug) or -vv (trace). The --log flag overrides this key. When empty,
+# the log is "tuiplay.log" next to this config file.
+# log_path = "~/.config/tuiplay/tuiplay.log"
+
 # Optional: built-in theme. Known values: default, catppuccin-latte,
 # catppuccin-frappe, catppuccin-macchiato, and catppuccin-mocha.
 # theme = "catppuccin-mocha"

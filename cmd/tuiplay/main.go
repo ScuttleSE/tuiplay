@@ -11,6 +11,7 @@ import (
 
 	"git.hemmalab.se/scuttle/tuiplay/internal/config"
 	"git.hemmalab.se/scuttle/tuiplay/internal/control"
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 	"git.hemmalab.se/scuttle/tuiplay/internal/player"
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
 	"git.hemmalab.se/scuttle/tuiplay/internal/ui"
@@ -28,6 +29,9 @@ func main() {
 
 	configPath := flag.String("config", "", "path to the config file")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	verbose := flag.Bool("v", false, "verbose: write a debug log")
+	veryVerbose := flag.Bool("vv", false, "very verbose: write a trace log (very noisy)")
+	logPath := flag.String("log", "", "path to the verbose log file (default: tuiplay.log next to the config)")
 	flag.Parse()
 
 	if *showVersion {
@@ -49,6 +53,27 @@ func main() {
 		}
 		fmt.Fprintln(os.Stderr, "config error:", err)
 		os.Exit(1)
+	}
+
+	verbosity := 0
+	if *verbose {
+		verbosity = 1
+	}
+	if *veryVerbose {
+		verbosity = 2
+	}
+	if verbosity > 0 {
+		lp := *logPath
+		if lp == "" {
+			lp = cfg.LogFilePath(*configPath)
+		}
+		closeLog, lerr := logging.Setup(lp, verbosity, "tuiplay "+version.Version)
+		if lerr != nil {
+			fmt.Fprintln(os.Stderr, "log error:", lerr)
+			os.Exit(1)
+		}
+		defer closeLog()
+		fmt.Fprintln(os.Stderr, "verbose log:", lp)
 	}
 
 	client := subsonic.New(cfg.ServerURL, cfg.Username, cfg.Password, cfg.MaxBitRate)

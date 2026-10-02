@@ -471,6 +471,23 @@ The volume is the player's own output level, shown as a percentage from 0 to
 100. It does not change the system mixer, so it does not affect other
 programs.
 
+## Verbose logging
+
+To diagnose a problem such as a hang, start tuiplay with a log level:
+
+- `tuiplay -v` writes a debug log: server requests, play requests, player
+  loads and crossfades, lyrics lookups, control commands, and slow updates.
+- `tuiplay -vv` writes a trace log: everything in `-v`, plus every
+  interface message, every key, and every audio lock. It is very noisy.
+
+The log goes to `tuiplay.log` next to the config file. Set `log_path` in the
+config or pass `--log <path>` to change it. Each run appends to the file.
+Credentials never appear in the log.
+
+In verbose mode a watchdog writes the stack of every goroutine to the log
+when the interface does not respond for 5 seconds. To write a stack dump
+yourself, run `kill -USR1 $(pidof tuiplay)`. Attach the log to a bug report.
+
 ## External control
 
 tuiplay can accept commands from another program, such as a streamdeck

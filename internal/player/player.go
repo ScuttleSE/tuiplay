@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/flac"
@@ -163,10 +164,14 @@ func (p *Player) SetCrossfade(seconds int) {
 
 // loadTrack downloads and decodes a stream into a new track at unity fade.
 func (p *Player) loadTrack(url, suffix string) (*track, error) {
+	start := time.Now()
+	logging.Debug("player load begin", "suffix", suffix)
 	tmp, err := download(url)
 	if err != nil {
+		logging.Debug("player download failed", "err", err, "took", time.Since(start))
 		return nil, err
 	}
+	logging.Debug("player download done", "took", time.Since(start))
 	f, err := os.Open(tmp)
 	if err != nil {
 		os.Remove(tmp)
@@ -176,8 +181,10 @@ func (p *Player) loadTrack(url, suffix string) (*track, error) {
 	if err != nil {
 		f.Close()
 		os.Remove(tmp)
+		logging.Debug("player decode failed", "suffix", suffix, "err", err)
 		return nil, fmt.Errorf("decode stream: %w", err)
 	}
+	logging.Debug("player load done", "rate", format.SampleRate, "len", streamer.Len(), "took", time.Since(start))
 	resampled := beep.Resample(4, format.SampleRate, sampleRate, streamer)
 	fade := &effects.Volume{Streamer: resampled, Base: 2, Volume: 0}
 	ctrl := &beep.Ctrl{Streamer: fade, Paused: false}
@@ -208,9 +215,11 @@ func (p *Player) Play(url, suffix string) error {
 
 	old.close()
 
-	speaker.Lock()
+	lockSpeaker("Play")
+	logging.Debug("player play: track added to mixer")
 	p.mixer.Add(beep.Seq(t.ctrl, beep.Callback(func() {
 		// Natural end with crossfade off: notify the queue.
+		logging.Debug("player track end callback (speaker goroutine)")
 		p.mu.Lock()
 		fading := p.fading
 		p.mu.Unlock()
@@ -218,7 +227,7 @@ func (p *Player) Play(url, suffix string) error {
 			onEnd()
 		}
 	})))
-	speaker.Unlock()
+	unlockSpeaker("Play")
 	return nil
 }
 
@@ -283,7 +292,8 @@ func (p *Player) Crossfade(url, suffix string, seconds int) error {
 	onEnd := p.onEnd
 	p.mu.Unlock()
 
-	speaker.Lock()
+	lockSpeaker("Crossfade")
+	logging.Debug("player crossfade start", "samples", n)
 	// Rebuild the mixer with exactly the outgoing and incoming streams.
 	// Each underlying streamer must appear once, or two mixer entries read
 	// the same stream at once and the audio garbles.
@@ -294,6 +304,7 @@ func (p *Player) Crossfade(url, suffix string, seconds int) error {
 		})))
 	}
 	p.mixer.Add(beep.Seq(inFade, beep.Callback(func() {
+		logging.Debug("player crossfaded track end callback (speaker goroutine)")
 		p.mu.Lock()
 		fading := p.fading
 		p.mu.Unlock()
@@ -301,7 +312,7 @@ func (p *Player) Crossfade(url, suffix string, seconds int) error {
 			onEnd()
 		}
 	})))
-	speaker.Unlock()
+	unlockSpeaker("Crossfade")
 
 	// The fade window is short. Mark the fade done after it elapses so the
 	// end monitor and the incoming callback resume normal behavior.
@@ -336,9 +347,9 @@ func (p *Player) maybeCrossfade() {
 		return
 	}
 	cur := p.current
-	speaker.Lock()
+	lockSpeaker("maybeCrossfade")
 	remain := cur.streamer.Len() - cur.streamer.Position()
-	speaker.Unlock()
+	unlockSpeaker("maybeCrossfade")
 	remainDur := cur.format.SampleRate.D(remain)
 	if remainDur > time.Duration(p.crossfadeSec)*time.Second {
 		p.mu.Unlock()
@@ -349,15 +360,18 @@ func (p *Player) maybeCrossfade() {
 	// Set fading now so the tick does not fire twice.
 	p.fading = true
 	p.mu.Unlock()
+	logging.Debug("player monitor: near end, asking provider", "remain", remainDur)
 
 	url, suffix, ok := provider()
 	if !ok {
+		logging.Debug("player monitor: provider has no next track")
 		p.mu.Lock()
 		p.fading = false
 		p.mu.Unlock()
 		return
 	}
 	if err := p.Crossfade(url, suffix, seconds); err != nil {
+		logging.Debug("player monitor: crossfade failed", "err", err)
 		p.mu.Lock()
 		p.fading = false
 		p.mu.Unlock()
@@ -374,9 +388,9 @@ func (p *Player) maybeCrossfade() {
 
 // clearMixerLocked clears the mixer. The caller holds p.mu.
 func (p *Player) clearMixerLocked() {
-	speaker.Lock()
+	lockSpeaker("clearMixerLocked")
 	p.mixer.Clear()
-	speaker.Unlock()
+	unlockSpeaker("clearMixerLocked")
 }
 
 // download fetches url into a new temporary file and returns its path.
@@ -444,9 +458,9 @@ func (p *Player) Pause() {
 	if p.current == nil {
 		return
 	}
-	speaker.Lock()
+	lockSpeaker("Pause")
 	p.current.ctrl.Paused = true
-	speaker.Unlock()
+	unlockSpeaker("Pause")
 	p.state = StatePaused
 }
 
@@ -457,9 +471,9 @@ func (p *Player) Resume() {
 	if p.current == nil {
 		return
 	}
-	speaker.Lock()
+	lockSpeaker("Resume")
 	p.current.ctrl.Paused = false
-	speaker.Unlock()
+	unlockSpeaker("Resume")
 	p.state = StatePlaying
 }
 
@@ -478,15 +492,16 @@ func (p *Player) TogglePause() {
 
 // Stop ends playback and removes the temporary files.
 func (p *Player) Stop() {
+	logging.Debug("player stop")
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.current == nil {
 		p.state = StateStopped
 		return
 	}
-	speaker.Lock()
+	lockSpeaker("Stop")
 	p.mixer.Clear()
-	speaker.Unlock()
+	unlockSpeaker("Stop")
 	p.current.close()
 	p.current = nil
 	p.fading = false
@@ -500,8 +515,8 @@ func (p *Player) Seek(delta int) {
 	if p.current == nil {
 		return
 	}
-	speaker.Lock()
-	defer speaker.Unlock()
+	lockSpeaker("Seek")
+	defer unlockSpeaker("Seek")
 	s := p.current.streamer
 	cur := s.Position()
 	target := cur + p.current.format.SampleRate.N(time.Duration(delta)*time.Second)
@@ -538,10 +553,10 @@ func (p *Player) SetVolumePercent(percent int) {
 	defer p.mu.Unlock()
 	p.volPercent = percent
 	gain, silent := gainFor(percent)
-	speaker.Lock()
+	lockSpeaker("SetVolumePercent")
 	p.master.Volume = gain
 	p.master.Silent = silent
-	speaker.Unlock()
+	unlockSpeaker("SetVolumePercent")
 }
 
 // VolumePercent returns the master output volume from 0 to 100.
@@ -566,8 +581,8 @@ func (p *Player) Position() (elapsed, total time.Duration) {
 	if p.current == nil {
 		return 0, 0
 	}
-	speaker.Lock()
-	defer speaker.Unlock()
+	lockSpeaker("Position")
+	defer unlockSpeaker("Position")
 	s := p.current.streamer
 	elapsed = p.current.format.SampleRate.D(s.Position())
 	total = p.current.format.SampleRate.D(s.Len())

@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 )
 
 // apiVersion is the Subsonic REST protocol version that the client sends.
@@ -103,17 +105,21 @@ func (c *Client) get(endpoint string, extra url.Values, out interface{}) error {
 	if err != nil {
 		return err
 	}
+	start := time.Now()
 	resp, err := c.http.Get(u)
 	if err != nil {
+		logging.Debug("subsonic request failed", "endpoint", endpoint, "took", time.Since(start), "err", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
+	logging.Debug("subsonic request", "endpoint", endpoint, "status", resp.StatusCode, "bytes", len(data), "took", time.Since(start))
 	if err != nil {
 		return err
 	}
 	if err := json.Unmarshal(data, out); err != nil {
+		logging.Debug("subsonic decode failed", "endpoint", endpoint, "err", err)
 		return fmt.Errorf("decode %s: %w", endpoint, err)
 	}
 	return nil

@@ -48,6 +48,7 @@ import (
 	"time"
 
 	"git.hemmalab.se/scuttle/tuiplay/internal/control"
+	"git.hemmalab.se/scuttle/tuiplay/internal/logging"
 	"git.hemmalab.se/scuttle/tuiplay/internal/lyrics"
 	"git.hemmalab.se/scuttle/tuiplay/internal/player"
 	"git.hemmalab.se/scuttle/tuiplay/internal/subsonic"
@@ -55,6 +56,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// watchdog detects a stalled interface loop in verbose mode. It is nil
+// when logging is off; its methods accept a nil receiver.
+var watchdog *logging.Watchdog
 
 // paneFocus names the pane that the keys act on.
 type paneFocus int
@@ -187,10 +192,14 @@ func Run(cl *subsonic.Client, pl *player.Player, state UIState, set Settings, ke
 	lyricsSrc := lyrics.NewSource(cache, lyricsDump, providers)
 
 	m := newModel(cl, pl, state, set, keys, lyricsSrc, queueSupported)
+	watchdog = logging.StartWatchdog(5 * time.Second)
+	logging.Debug("ui start", "queue_ext", queueSupported, "providers", set.LyricsProviders, "control", set.ControlSocket)
 	shared := m.xfShared
 	prog := tea.NewProgram(m, tea.WithAltScreen())
 	pl.SetOnEnd(func() {
+		logging.Debug("player onEnd: sending trackEndedMsg")
 		prog.Send(trackEndedMsg{})
+		logging.Trace("player onEnd: trackEndedMsg delivered")
 	})
 
 	// Start the external control listener when a socket path is set. A
@@ -303,12 +312,15 @@ func handleControlConn(conn net.Conn, prog *tea.Program) {
 	}
 
 	reply := make(chan string, 1)
+	logging.Debug("control command", "name", cmd.Name, "arg", cmd.Arg)
 	prog.Send(controlMsg{name: cmd.Name, arg: cmd.Arg, reply: reply})
 
 	select {
 	case r := <-reply:
+		logging.Debug("control reply", "name", cmd.Name, "reply", r)
 		fmt.Fprintln(conn, r)
 	case <-time.After(3 * time.Second):
+		logging.Warn("control reply timeout", "name", cmd.Name)
 		fmt.Fprintln(conn, "err: timeout")
 	}
 }
